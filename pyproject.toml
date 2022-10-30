@@ -13,6 +13,8 @@ notebook = "^6.4.12"
 nest-asyncio = "^1.5.5"
 pandas = "^1.5.0"
 matplotlib = "^3.6.0"
+black = "^22.10.0"
+loguru = "^0.6.0"
 
 [tool.poetry.dev-dependencies]
 
