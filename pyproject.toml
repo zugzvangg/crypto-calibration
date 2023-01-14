@@ -15,6 +15,7 @@ pandas = "^1.5.0"
 matplotlib = "^3.6.0"
 black = "^22.10.0"
 loguru = "^0.6.0"
+vaex = "^4.16.0"
 
 [tool.poetry.dev-dependencies]
 
