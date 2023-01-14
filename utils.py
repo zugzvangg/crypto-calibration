@@ -103,3 +103,8 @@ def collect_single_instrument_data(
     )
     df["strike"] = int(df.iloc[0].instrument_name.split("-")[2])
     return df
+
+def get_human_timestamp(timestamp: int):
+    """Get human-readable timestamp from linux date"""
+    return datetime.datetime.fromtimestamp(timestamp/1000000.0).strftime('%Y-%m-%d %H:%M:%S.%f')
+
