@@ -5,6 +5,7 @@ import pandas as pd
 import nest_asyncio
 from loguru import logger
 import datetime
+
 nest_asyncio.apply()
 import warnings
 from typing import Union
@@ -105,10 +106,15 @@ def collect_single_instrument_data(
     df["strike"] = int(df.iloc[0].instrument_name.split("-")[2])
     return df
 
+
 def get_human_timestamp(timestamp: int):
     """Get human-readable timestamp from linux date"""
-    return datetime.datetime.fromtimestamp(timestamp/1000000.0).strftime('%Y-%m-%d %H:%M:%S.%f')
+    return datetime.datetime.fromtimestamp(timestamp / 1000000.0).strftime(
+        "%Y-%m-%d %H:%M:%S.%f"
+    )
+
 
 def get_difference_between_now_and_expirety_date(now: int, expiration_date: int):
     """Returns the time between now and expiration date in YEARS"""
-    return (now - expiration_date)/(1_000_000*60*60*24*365)
+    return (now - expiration_date) / (1_000_000 * 60 * 60 * 24 * 365)
+
