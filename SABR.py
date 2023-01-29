@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 import pandas as pd
 import numpy as np
@@ -8,7 +9,6 @@ import seaborn as sns
 from loguru import logger
 
 
-
 class SABR:
     def __init__(self, data: pd.DataFrame, beta: float = 0.5) -> None:
         """Class to model the volatility smile"""
@@ -16,12 +16,11 @@ class SABR:
         # let it be fixed as in the artice
         self.beta = beta
         self.T = data.iloc[0].tau
-        #Change by milliseconds, but we need similar
+        # Change by milliseconds, but we need similar
         self.underlying_price = data.iloc[0].underlying_price
         # start params for optimization
         self.x0 = np.array([0.99, 0.00, 0.99])
         self.bounds = [(0.0001, 1000.0), (-0.9999, 0.9999), (0.0001, 1000.0)]
-
 
     def _sigmaB(
         self, f: float, K: float, T: float, alpha: float, rho: float, v: float
@@ -69,21 +68,31 @@ class SABR:
                 )
                 self.volatilities.append(sigma_modeled)
 
-        get_sigmas_for_set_of_params(
-            self.alpha_scipy, self.rho_scipy, self.v_scipy
-        )
+        get_sigmas_for_set_of_params(self.alpha_scipy, self.rho_scipy, self.v_scipy)
 
         fig, ax = plt.subplots(figsize=(20, 7))
-        ax = sns.scatterplot(x = "strike_price", y = "mark_iv", data=self.data, 
-                             color = "black",
-                             label="scipy optimizer")
+        ax = sns.scatterplot(
+            x="strike_price",
+            y="mark_iv",
+            data=self.data,
+            color="black",
+            label="scipy optimizer",
+        )
 
         ax1 = sns.lineplot(
             x=self.test_strikes,
             y=self.volatilities,
             label="market volatilities",
             color="blue",
-        ).set_title(f"T = {int(self.T * 365)} days")
+        ).set_title(
+            f"""
+        T = {int(self.T * 365)} days
+        alpha: {round(self.alpha_scipy, 2)}
+        beta: {round(self.beta, 2)}
+        rho: {round(self.rho_scipy, 2)}
+        volvol: {round(self.v_scipy, 2)}
+        """
+        )
 
     def _vol_square_error(self, x: np.ndarray) -> np.float64:
         """Function to get the argmin function we want to optimize"""
@@ -98,10 +107,9 @@ class SABR:
             )
         return sum((vols - smile) ** 2)
 
-
     def _minimize_scipy(self) -> np.float64:
         """Optimization with scipy optimizer"""
-        return minimize(self._vol_square_error, x0=self.x0,  bounds = self.bounds)
+        return minimize(self._vol_square_error, x0=self.x0, bounds=self.bounds)
 
     def run(self) -> None:
         """Run optimization and plot results"""
@@ -109,9 +117,19 @@ class SABR:
         optimum_scipy = self._minimize_scipy()
         self.alpha_scipy, self.rho_scipy, self.v_scipy = optimum_scipy.x
         logger.info(
-            f"""Optimal params for T = {int(self.T*365)} days: alpha = {self.alpha_scipy}, rho = {self.rho_scipy}, v = {self.v_scipy}
-            beta = {self.beta}"""
+            f"""Optimal params for T = {int(self.T*365)} days: 
+            alpha = {round(self.alpha_scipy, 2)}, 
+            rho = {round(self.rho_scipy, 2)}, 
+            volvol = {round(self.v_scipy, 2)}
+            beta = {round(self.beta, 2)}"""
         )
         # plot market values and modeled function
         self._plot_results()
-        return self.volatilities, self.alpha_scipy, self.beta, self.rho_scipy, self.v_scipy, self.T
+        return (
+            self.volatilities,
+            self.alpha_scipy,
+            self.beta,
+            self.rho_scipy,
+            self.v_scipy,
+            self.T,
+        )
