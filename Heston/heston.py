@@ -972,6 +972,9 @@ def JacHes(
     discpi = np.exp(-r * market_parameters.T) / pi
     jac = np.zeros(n, dtype=np.float64)
     w = glaw.w
+
+    da, db, dc, drho, dv0 = 0.0, 0.0, 0.0, 0.0, 0.0
+
     for l in range(n):
         K = market_parameters.K[l]
         T = market_parameters.T[l]
@@ -1013,22 +1016,35 @@ def JacHes(
         Qv2 = Q * pa2
         jac[l] = discpi * (Qv1 - K * Qv2)
 
+        da += discpi * (Qv1 - K * Qv2)
+
         Qv1 = Q * pb1
         Qv2 = Q * pb2
         jac[l] = discpi * (Qv1 - K * Qv2)
+
+        db += discpi * (Qv1 - K * Qv2)
 
         Qv1 = Q * pc1
         Qv2 = Q * pc2
         jac[l] = discpi * (Qv1 - K * Qv2)
 
+        dc += discpi * (Qv1 - K * Qv2)
+
         Qv1 = Q * prho1
         Qv2 = Q * prho2
         jac[l] = discpi * (Qv1 - K * Qv2)
+
+        drho += discpi * (Qv1 - K * Qv2)
 
         Qv1 = Q * pv01
         Qv2 = Q * pv02
         jac[l] = discpi * (Qv1 - K * Qv2)
 
+        dv0 += discpi * (Qv1 - K * Qv2)
+
+    # return jac
+    jac = np.asarray([da, db, dc, drho, dv0])
+    # print("In heston.py", jac)
     return jac
 
 

@@ -232,7 +232,7 @@ def proj_heston( heston_params : np.ndarray )->np.ndarray:
         k = np.clip(k, eps, 10.0)
         sig = np.clip(sig, eps, 5.0)
         heston_params[i * 5 : i * 5 + 5] = v0, theta, rho, k, sig
-    return 
+    return heston_params
 
 def get_residuals( heston_params:np.ndarray ) -> Tuple[ np.ndarray, np.ndarray ]:
     '''
@@ -277,7 +277,8 @@ def get_residuals( heston_params:np.ndarray ) -> Tuple[ np.ndarray, np.ndarray ]
     X_ = C
     X_[~typ] = P[~typ]
     res = X_ - X
-    return res * weights, J @ np.diag(weights)
+
+    return res, np.array(J)
 
 
 
