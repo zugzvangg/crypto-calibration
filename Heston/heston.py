@@ -393,6 +393,7 @@ def HesIntMN(
     :return:
     """
     csqr = np.power(model_parameters.c, 2)
+
     PQ_M, PQ_N = P + Q * glaw.u, P - Q * glaw.u
     imPQ_M = i * PQ_M
     imPQ_N = i * PQ_N
@@ -402,16 +403,18 @@ def HesIntMN(
     h_M = np.divide(np.power(market_parameters.K[market_pointer], -imPQ_M), imPQ_M)
     h_N = np.divide(np.power(market_parameters.K[market_pointer], -imPQ_N), imPQ_N)
 
+
     x0 = (
         np.log(market_parameters.S)
         + market_parameters.r * market_parameters.T[market_pointer]
     )
-    tmp = model_parameters.c * model_parameters.rho
+    tmp = model_parameters.c * model_parameters.rho    
 
     kes_M1 = model_parameters.a - np.multiply(tmp, _imPQ_M)
     kes_N1 = model_parameters.a - np.multiply(tmp, _imPQ_N)
     kes_M2 = kes_M1 + tmp
     kes_N2 = kes_N1 + tmp
+    
 
     m_M1 = imPQ_M + one + np.power(PQ_M - i, 2)
     m_N1 = imPQ_N + one + np.power(PQ_N - i, 2)
@@ -423,6 +426,7 @@ def HesIntMN(
     d_M2 = np.sqrt(np.power(kes_M2, 2) + m_M2 * csqr)
     d_N2 = np.sqrt(np.power(kes_N2, 2) + m_N2 * csqr)
 
+    
     tmp1 = (
         -model_parameters.a
         * model_parameters.b
@@ -430,12 +434,15 @@ def HesIntMN(
         * market_parameters.T[market_pointer]
         / model_parameters.c
     )
-
+    
+    # вот эта строка была пропущено и цены плохо считались 16.02.2023
+    tmp = np.exp(tmp1)
     g_M2 = np.exp(tmp1 * imPQ_M)
     g_N2 = np.exp(tmp1 * imPQ_N)
     g_M1 = g_M2 * tmp
     g_N1 = g_N2 * tmp
 
+    
     tmp = 0.5 * market_parameters.T[market_pointer]
     alpha = d_M1 * tmp
     calp_M1 = np.cosh(alpha)
@@ -563,6 +570,7 @@ def fHes(
     """
     x = np.zeros(n, dtype=np.float64)
     num_grids = integration_settings.numgrid // 2
+    # for l in range(len(market_parameters.K)) # same
     for l in range(n):
         K = market_parameters.K[l]
         T = market_parameters.T[l]

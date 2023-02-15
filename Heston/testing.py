@@ -1,4 +1,4 @@
-from heston import MarketParameters, ModelParameters, GLAW, fHes, JacHes
+from heston import MarketParameters, ModelParameters, GLAW, fHes, JacHes, HesIntMN
 import numpy as np
 from levenberg_marquardt import Levenberg_Marquardt
 from typing import Tuple
@@ -51,8 +51,6 @@ karr = np.array(
     dtype=np.float64,
 )
 
-# iv?
-X = np.ones(len(karr))
 
 tarr = np.array(
     [
@@ -111,8 +109,6 @@ rho = np.float64(
     -0.8
 )  # rho                             |  correlation between spot and volatility
 v0 = np.float64(0.08)
-
-# model = ModelParameters(a=a, b=b, c=c, rho=rho, v0=v0)
 
 
 x64 = np.array(
@@ -189,19 +185,37 @@ w64 = np.array(
     ],
     dtype=np.float64,
 )
-r = 0.0
-T = tarr
+
+
 numgrid = np.int32(60)
 integration_settings = GLAW(numgrid=numgrid, u=x64, w=w64)
+model = ModelParameters(a=a, b=b, c=c, rho=rho, v0=v0)
 
-# x = fHes(
-#     model_parameters=model,
+
+x = fHes(
+    model_parameters=model,
+    market_parameters=market,
+    integration_settings=integration_settings,
+    m=m,
+    n=n,
+)
+print(x)
+# print(len(x))
+
+# res = HesIntMN(
+#     glaw = integration_settings, 
+#     model_parameters=model, 
 #     market_parameters=market,
-#     integration_settings=integration_settings,
-#     m=m,
-#     n=n,
-# )
-# print(x)
+#     market_pointer=np.int32(0))
+
+# for i in range(32):
+#     print(res.M1[i], res.N1[i], res.M2[i], res.N2[i])
+# print("M1", res.M1)
+# print("N1", res.N1)
+# print("M2", res.M2)
+# print("N2", res.N2)
+
+
 
 # hes = JacHes(
 #     glaw=integration_settings,
@@ -214,85 +228,5 @@ integration_settings = GLAW(numgrid=numgrid, u=x64, w=w64)
 
 # print("Worked out")
 
-def proj_heston( heston_params : np.ndarray )->np.ndarray:
-    """
-        This funciton project heston parameters into valid range
-        Attributes:
-            heston_params(np.ndarray): model parameters
-        
-        Returns:
-            heston_params(np.ndarray): clipped parameters
-    """
-    eps = 1e-3
-    for i in range(len(heston_params) // 5):
-        v0, theta, rho, k, sig = heston_params[i * 5 : i * 5 + 5]
-        v0 = np.clip(v0, eps, 5.0)
-        theta = np.clip(theta, eps, 5.0)
-        rho = np.clip(rho, -1 + eps, 1 - eps)
-        k = np.clip(k, eps, 10.0)
-        sig = np.clip(sig, eps, 5.0)
-        heston_params[i * 5 : i * 5 + 5] = v0, theta, rho, k, sig
-    return heston_params
-
-def get_residuals( heston_params:np.ndarray ) -> Tuple[ np.ndarray, np.ndarray ]:
-    '''
-        This function calculates residuals and Jacobian matrix
-        Args:
-            heston_params(np.ndarray): model params
-        Returns:
-            res(np.ndarray) : vector or residuals
-            J(np.ndarray)   : Jacobian
-    '''
-    # needed format to go
-    model_parameters = ModelParameters(
-            heston_params[0],
-            heston_params[1],
-            heston_params[2],
-            heston_params[3],
-            heston_params[4])
-    # тут ок в целом, надо подогнать дальше и смотреть
-    #  чтоб ваще те параметры подставлялись в якобиан
-    C = fHes(
-    model_parameters=model_parameters,
-    market_parameters=market,
-    integration_settings=integration_settings,
-    m=m,
-    n=n,
-    )
-
-    J = JacHes(
-    glaw=integration_settings,
-    model_parameters=model_parameters, ###
-    market_parameters=market,
-    market_pointer=np.int32(1),
-    n=n,)
-    
-    K = karr
-    F = np.ones(len(K))*market.S
-    weights = np.ones_like(K)
-    weights = weights / np.sum(weights)
-
-    typ = True
-    P = C + np.exp(-r * T) * ( K - F )
-    X_ = C
-    X_[~typ] = P[~typ]
-    res = X_ - X
-
-    return res, np.array(J)
 
 
-
-# start_params = ModelParameters(a=1.2, b=0.2, c=0.3, rho=-0.6, v0=0.2)
-# start_params = np.array([a, b, c, rho, v0])
-# res = Levenberg_Marquardt(100, get_residuals, proj_heston, start_params)
-
-
-model_parameters = np.array([a, b, c, rho, v0])
-x = fHes(
-    model_parameters=model_parameters,
-    market_parameters=market,
-    integration_settings=integration_settings,
-    m=m,
-    n=n,
-)
-print(x)
