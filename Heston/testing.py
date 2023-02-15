@@ -1,4 +1,4 @@
-from heston import MarketParameters, ModelParameters, GLAW, fHes, JacHes, HesIntMN
+from heston import MarketParameters, ModelParameters, GLAW, fHes, JacHes, HesIntMN, HesIntJac
 import numpy as np
 from levenberg_marquardt import Levenberg_Marquardt
 from typing import Tuple
@@ -191,22 +191,27 @@ numgrid = np.int32(60)
 integration_settings = GLAW(numgrid=numgrid, u=x64, w=w64)
 model = ModelParameters(a=a, b=b, c=c, rho=rho, v0=v0)
 
+# NOTE: ok
+# x = fHes(
+#     model_parameters=model,
+#     market_parameters=market,
+#     integration_settings=integration_settings,
+#     m=m,
+#     n=n,
+# )
+# print(x)
 
-x = fHes(
-    model_parameters=model,
-    market_parameters=market,
-    integration_settings=integration_settings,
-    m=m,
-    n=n,
-)
-print(x)
-# print(len(x))
-
-# res = HesIntMN(
+# NOTE: ok
+# res = HesIntJac(
 #     glaw = integration_settings, 
 #     model_parameters=model, 
 #     market_parameters=market,
 #     market_pointer=np.int32(0))
+# print(res.pv02s)
+
+
+# NOTE: JacHes осталось сверить
+
 
 # for i in range(32):
 #     print(res.M1[i], res.N1[i], res.M2[i], res.N2[i])

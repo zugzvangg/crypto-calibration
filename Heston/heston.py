@@ -964,7 +964,7 @@ def JacHes(
     glaw: GLAW,
     model_parameters: ModelParameters,
     market_parameters: MarketParameters,
-    market_pointer: int,
+    # market_pointer: int,
     n: int,
 ) -> None:
     """
@@ -1005,6 +1005,7 @@ def JacHes(
             market_parameters=market_parameters,
             market_pointer=l,
         )
+        print(jacint.pa1s)
         pa1 += np.multiply(w, jacint.pa1s).sum()
         pa2 += np.multiply(w, jacint.pa2s).sum()
 
@@ -1050,9 +1051,7 @@ def JacHes(
 
         dv0 += discpi * (Qv1 - K * Qv2)
 
-    # return jac
     jac = np.asarray([da, db, dc, drho, dv0])
-    # print("In heston.py", jac)
     return jac
 
 
