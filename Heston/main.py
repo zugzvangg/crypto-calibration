@@ -49,8 +49,8 @@ karr = np.array(
     dtype=np.float64,
 )
 
-# iv?
-X = np.random.randint(10, size = len(karr))
+# цены берем с дерибита
+carr = karr
 
 tarr = np.array(
     [
@@ -100,7 +100,7 @@ tarr = np.array(
 S_val = np.float64(1.0)
 r_val = np.float64(0.02)
 
-market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val)
+market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, C = carr)
 
 a = np.float64(3.0)  # kappa                           |  mean reversion rate
 b = np.float64(0.10)  # v_infinity                      |  long term variance
@@ -110,9 +110,6 @@ rho = np.float64(
 )  # rho                             |  correlation between spot and volatility
 v0 = np.float64(0.08)
 
-
-r = 0.0
-T = tarr
 
 
 def proj_heston( heston_params : np.ndarray )->np.ndarray:
@@ -167,10 +164,10 @@ def get_residuals( heston_params:np.ndarray ) -> Tuple[ np.ndarray, np.ndarray ]
     weights = np.ones_like(K)
     weights = weights / np.sum(weights)
     typ = True
-    P = C + np.exp(-r * T) * ( K - F )
+    P = C + np.exp(-market.r * market.T) * ( K - F )
     X_ = C
     X_[~typ] = P[~typ]
-    res = X_ - X
+    res = X_ - market.C
     return res * weights,  J @ np.diag(weights)
 
 

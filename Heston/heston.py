@@ -7,6 +7,7 @@ _spec_market_params = [
     ("r", nb.float64),
     ("T", nb.float64[:]),
     ("K", nb.float64[:]),
+    ("C", nb.float64[:]),
 ]
 _spec_model_params = [
     ("a", nb.float64),
@@ -42,14 +43,16 @@ class MarketParameters(object):
     r: nb.float64
     T: nb.float64[:]
     K: nb.float64[:]
+    C: nb.float64[:]
 
     def __init__(
-        self, S: nb.float64, r: nb.float64, T: nb.float64[:], K: nb.float64[:]
+        self, S: nb.float64, r: nb.float64, T: nb.float64[:], K: nb.float64[:], C: nb.float64[:] 
     ):
         self.S = S
         self.r = r
         self.T = T
         self.K = K
+        self.C = C
 
 
 @nb.experimental.jitclass(_spec_model_params)
