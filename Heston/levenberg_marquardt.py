@@ -44,8 +44,8 @@ def Levenberg_Marquardt(Niter:int,
     
     for i in range(Niter):
         multipl = J @ J.T
-        print(multipl)
-        print(x)
+        # print(multipl)
+        # print(x)
 
         I = np.diag(np.diag(multipl)) + 1e-5 * np.eye(len(x))
         dx = np.linalg.solve( mu * I + multipl, J @ res )
@@ -78,11 +78,8 @@ def Levenberg_Marquardt(Niter:int,
 #     dx, dy , iv = get_value(x, y)
 #     res = iv - iv0
 #     J = np.asarray([dx, dy])
-#     print("J", J)
 #     weights = np.ones_like(iv0)
 #     weights = weights / np.sum(weights)
-#     print("W", weights)
-#     print(J @ np.diag(weights))
 #     # return res * weights, J @ np.diag(weights)
 #     return res, J
 

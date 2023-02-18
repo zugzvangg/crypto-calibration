@@ -143,6 +143,7 @@ ub: Final[np.int32] = np.int32(200)
 Q: Final[np.float64] = np.float64(0.5 * (ub - lb))
 P: Final[np.float64] = np.float64(0.5 * (ub + lb))
 
+# разбивка от 0 до 1
 u64 = np.array(
     [
         0.0243502926634244325089558,
@@ -994,23 +995,30 @@ def HesIntJac(
     return Jacobian
 
 
-@nb.njit
+# @nb.njit
 def JacHes(
     model_parameters: ModelParameters,
     market_parameters: MarketParameters,
-) -> np.asarray:
+) -> np.array:
     """
     Jacobian
     :param model_parameters: ModelParameters class
     :param market_parameters: MarketParameters class
     :return:
     """
-    n = len(market_parameters.K)
+    n = np.int32(len(market_parameters.K))
     r = market_parameters.r
     discpi = np.exp(-r * market_parameters.T) / pi
-    jac = np.zeros(n, dtype=np.float64)
 
-    da, db, dc, drho, dv0 = 0.0, 0.0, 0.0, 0.0, 0.0
+    da, db, dc, drho, dv0 = (
+        np.float64(0.0),
+        np.float64(0.0),
+        np.float64(0.0),
+        np.float64(0.0),
+        np.float64(0.0),
+    )
+
+    jacs = np.zeros([5, n], dtype=np.float64)
 
     for l in range(n):
         K = market_parameters.K[l]
@@ -1047,36 +1055,32 @@ def JacHes(
 
         pv01 += np.multiply(w64, jacint.pv01s).sum()
         pv02 += np.multiply(w64, jacint.pv02s).sum()
+        # вот посчитаны все точки
+        # print(pa1, pa2, pb1, pb2, pc1, pc2, prho1, prho2, pv01, pv02)
 
         Qv1 = Q * pa1
         Qv2 = Q * pa2
-        jac[l] = discpi * (Qv1 - K * Qv2)
-
-        da += discpi * (Qv1 - K * Qv2)
+        da = discpi * (Qv1 - K * Qv2)
+        jacs[0][l] = da
 
         Qv1 = Q * pb1
         Qv2 = Q * pb2
-        jac[l] = discpi * (Qv1 - K * Qv2)
-
-        db += discpi * (Qv1 - K * Qv2)
+        db = discpi * (Qv1 - K * Qv2)
+        jacs[1][l] = db
 
         Qv1 = Q * pc1
         Qv2 = Q * pc2
-        jac[l] = discpi * (Qv1 - K * Qv2)
-
-        dc += discpi * (Qv1 - K * Qv2)
+        dc = discpi * (Qv1 - K * Qv2)
+        jacs[2][l] = dc
 
         Qv1 = Q * prho1
         Qv2 = Q * prho2
-        jac[l] = discpi * (Qv1 - K * Qv2)
-
-        drho += discpi * (Qv1 - K * Qv2)
+        drho = discpi * (Qv1 - K * Qv2)
+        jacs[3][l] = drho
 
         Qv1 = Q * pv01
         Qv2 = Q * pv02
-        jac[l] = discpi * (Qv1 - K * Qv2)
+        dv0 = discpi * (Qv1 - K * Qv2)
+        jacs[4][l] = dv0
 
-        dv0 += discpi * (Qv1 - K * Qv2)
-
-    jac = np.asarray([da, db, dc, drho, dv0])
-    return jac
+    return jacs
