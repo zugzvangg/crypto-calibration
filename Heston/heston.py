@@ -454,18 +454,16 @@ def HesIntMN(
     h_M = np.divide(np.power(market_parameters.K[market_pointer], -imPQ_M), imPQ_M)
     h_N = np.divide(np.power(market_parameters.K[market_pointer], -imPQ_N), imPQ_N)
 
-
     x0 = (
         np.log(market_parameters.S)
         + market_parameters.r * market_parameters.T[market_pointer]
     )
-    tmp = model_parameters.c * model_parameters.rho    
+    tmp = model_parameters.c * model_parameters.rho
 
     kes_M1 = model_parameters.a - np.multiply(tmp, _imPQ_M)
     kes_N1 = model_parameters.a - np.multiply(tmp, _imPQ_N)
     kes_M2 = kes_M1 + tmp
     kes_N2 = kes_N1 + tmp
-    
 
     m_M1 = imPQ_M + one + np.power(PQ_M - i, 2)
     m_N1 = imPQ_N + one + np.power(PQ_N - i, 2)
@@ -477,7 +475,6 @@ def HesIntMN(
     d_M2 = np.sqrt(np.power(kes_M2, 2) + m_M2 * csqr)
     d_N2 = np.sqrt(np.power(kes_N2, 2) + m_N2 * csqr)
 
-    
     tmp1 = (
         -model_parameters.a
         * model_parameters.b
@@ -485,7 +482,7 @@ def HesIntMN(
         * market_parameters.T[market_pointer]
         / model_parameters.c
     )
-    
+
     # вот эта строка была пропущено и цены плохо считались 16.02.2023
     tmp = np.exp(tmp1)
     g_M2 = np.exp(tmp1 * imPQ_M)
@@ -493,7 +490,6 @@ def HesIntMN(
     g_M1 = g_M2 * tmp
     g_N1 = g_N2 * tmp
 
-    
     tmp = 0.5 * market_parameters.T[market_pointer]
     alpha = d_M1 * tmp
     calp_M1 = np.cosh(alpha)
@@ -603,9 +599,8 @@ _tmp_values_fHes = {
 
 @nb.njit(locals=_tmp_values_fHes)
 def fHes(
-    model_parameters: ModelParameters,
-    market_parameters: MarketParameters
-):
+    model_parameters: ModelParameters, market_parameters: MarketParameters
+) -> np.array:
     """
     Function to calculate price of option by Heston model.
     :param model_parameters: ModelParameters class
@@ -1003,7 +998,7 @@ def HesIntJac(
 def JacHes(
     model_parameters: ModelParameters,
     market_parameters: MarketParameters,
-) -> None:
+) -> np.asarray:
     """
     Jacobian
     :param model_parameters: ModelParameters class
@@ -1014,7 +1009,6 @@ def JacHes(
     r = market_parameters.r
     discpi = np.exp(-r * market_parameters.T) / pi
     jac = np.zeros(n, dtype=np.float64)
-    w = w64
 
     da, db, dc, drho, dv0 = 0.0, 0.0, 0.0, 0.0, 0.0
 
@@ -1039,20 +1033,20 @@ def JacHes(
             market_parameters=market_parameters,
             market_pointer=l,
         )
-        pa1 += np.multiply(w, jacint.pa1s).sum()
-        pa2 += np.multiply(w, jacint.pa2s).sum()
+        pa1 += np.multiply(w64, jacint.pa1s).sum()
+        pa2 += np.multiply(w64, jacint.pa2s).sum()
 
-        pb1 += np.multiply(w, jacint.pb1s).sum()
-        pb2 += np.multiply(w, jacint.pb2s).sum()
+        pb1 += np.multiply(w64, jacint.pb1s).sum()
+        pb2 += np.multiply(w64, jacint.pb2s).sum()
 
-        pc1 += np.multiply(w, jacint.pc1s).sum()
-        pc2 += np.multiply(w, jacint.pc2s).sum()
+        pc1 += np.multiply(w64, jacint.pc1s).sum()
+        pc2 += np.multiply(w64, jacint.pc2s).sum()
 
-        prho1 += np.multiply(w, jacint.prho1s).sum()
-        prho2 += np.multiply(w, jacint.prho2s).sum()
+        prho1 += np.multiply(w64, jacint.prho1s).sum()
+        prho2 += np.multiply(w64, jacint.prho2s).sum()
 
-        pv01 += np.multiply(w, jacint.pv01s).sum()
-        pv02 += np.multiply(w, jacint.pv02s).sum()
+        pv01 += np.multiply(w64, jacint.pv01s).sum()
+        pv02 += np.multiply(w64, jacint.pv02s).sum()
 
         Qv1 = Q * pa1
         Qv2 = Q * pa2
@@ -1086,4 +1080,3 @@ def JacHes(
 
     jac = np.asarray([da, db, dc, drho, dv0])
     return jac
-
