@@ -121,15 +121,15 @@ def proj_heston( heston_params : np.ndarray )->np.ndarray:
         Returns:
             heston_params(np.ndarray): clipped parameters
     """
-    eps = 1e-3
+    eps = 1e-4
     for i in range(len(heston_params) // 5):
-        v0, theta, rho, k, sig = heston_params[i * 5 : i * 5 + 5]
-        v0 = np.clip(v0, eps, 5.0)
-        theta = np.clip(theta, eps, 5.0)
+        a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
+        a = np.clip(a, eps, 100.0)
+        b = np.clip(b, eps, 100.0)
+        c = np.clip(c, eps, 100.0)
         rho = np.clip(rho, -1 + eps, 1 - eps)
-        k = np.clip(k, eps, 10.0)
-        sig = np.clip(sig, eps, 5.0)
-        heston_params[i * 5 : i * 5 + 5] = v0, theta, rho, k, sig
+        v0 = np.clip(v0, eps, 100.0)
+        heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
     return heston_params
 
 def get_residuals( heston_params:np.ndarray ) -> Tuple[ np.ndarray, np.ndarray ]:
