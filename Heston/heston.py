@@ -1018,7 +1018,35 @@ def HesIntJac(
     return Jacobian
 
 
-# @nb.njit
+_tmp_values_JacHes = {
+    "n": nb.int32,
+    "r": nb.float64,
+    "discpi": nb.float64,
+    "da": nb.float64,
+    "db": nb.float64,
+    "dc": nb.float64,
+    "drho": nb.float64,
+    "dv0": nb.float64,
+    "jacs": nb.types.Array(nb.float64, 2, "A"),
+    "K": nb.float64,
+    "T": nb.float64,
+    "pa1": nb.float64,
+    "pa2": nb.float64,
+    "pb1": nb.float64,
+    "pb2": nb.float64,
+    "pc1": nb.float64,
+    "pc2": nb.float64,
+    "prho1": nb.float64,
+    "prho2": nb.float64,
+    "pv01": nb.float64,
+    "pv02": nb.float64,
+    # "jacint": tagMNJac,
+    "Qv1": nb.float64,
+    "Qv2": nb.float64,
+}
+
+
+@nb.njit(locals=_tmp_values_JacHes)
 def JacHes(
     model_parameters: ModelParameters,
     market_parameters: MarketParameters,
@@ -1031,7 +1059,6 @@ def JacHes(
     """
     n = np.int32(len(market_parameters.K))
     r = market_parameters.r
-    discpi = np.exp(-r * market_parameters.T) / pi
 
     da, db, dc, drho, dv0 = (
         np.float64(0.0),
@@ -1040,24 +1067,22 @@ def JacHes(
         np.float64(0.0),
         np.float64(0.0),
     )
-
-    jacs = np.zeros([5, n], dtype=np.float64)
-
+    jacs = np.zeros((5, n), dtype=np.float64)
     for l in range(n):
         K = market_parameters.K[l]
         T = market_parameters.T[l]
         discpi = np.exp(-r * T) / pi
         pa1, pa2, pb1, pb2, pc1, pc2, prho1, prho2, pv01, pv02 = (
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
+            np.float64(0.0),
         )
         jacint: tagMNJac = HesIntJac(
             model_parameters=model_parameters,
@@ -1078,8 +1103,6 @@ def JacHes(
 
         pv01 += np.multiply(w64, jacint.pv01s).sum()
         pv02 += np.multiply(w64, jacint.pv02s).sum()
-        # вот посчитаны все точки
-        # print(pa1, pa2, pb1, pb2, pc1, pc2, prho1, prho2, pv01, pv02)
 
         Qv1 = Q * pa1
         Qv2 = Q * pa2
@@ -1240,7 +1263,7 @@ def calibrate_heston(
     #         model_parameters=final_params,
     #         market_parameters=market,
     #     )
-    
+
     # print("market", market.C)
     # print("final", final_prices)
     # print("========")
