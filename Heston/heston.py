@@ -10,6 +10,7 @@ _spec_market_params = [
     ("T", nb.float64[:]),
     ("K", nb.float64[:]),
     ("C", nb.float64[:]),
+    ("types", nb.boolean[:]),
 ]
 _spec_model_params = [
     ("a", nb.float64),
@@ -46,6 +47,7 @@ class MarketParameters(object):
     T: nb.float64[:]
     K: nb.float64[:]
     C: nb.float64[:]
+    types: nb.boolean[:]
 
     def __init__(
         self,
@@ -54,12 +56,14 @@ class MarketParameters(object):
         T: nb.float64[:],
         K: nb.float64[:],
         C: nb.float64[:],
+        types: nb.boolean[:],
     ):
         self.S = S
         self.r = r
         self.T = T
         self.K = K
         self.C = C
+        self.types = types
 
 
 @nb.experimental.jitclass(_spec_model_params)
@@ -639,7 +643,16 @@ def fHes(
         Qv1 = Q * y1
         Qv2 = Q * y2
         pv = np.float64(0.0)
-        pv = tmp + disc * (Qv1 - K * Qv2)
+        if market_parameters.types[l]:
+            # calls
+            pv = tmp + disc * (Qv1 - K * Qv2)
+        else:
+            # puts
+            pv = (
+                tmp
+                + disc * (Qv1 - K * Qv2)
+                + np.exp(-market_parameters.r * T) * (K - market_parameters.S)
+            )
         x[l] = pv
     return x
 
@@ -1151,12 +1164,13 @@ def calibrate_heston(
     karr = tick.strike_price.to_numpy(dtype=np.float64)
     carr = tick.mark_price_usd.to_numpy(dtype=np.float64)
     tarr = tick.tau.to_numpy(dtype=np.float64)
+    types = np.where(tick["type"] == "call", True, False)
     # take it zero as on deribit
     r_val = np.float64(0.0)
     # tick dataframes may have not similar timestamps -->
-    # not equak value if underlying --> take mean
+    # not equal value if underlying --> take mean
     S_val = np.float64(tick.underlying_price.mean())
-    market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, C=carr)
+    market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, C=carr, types=types)
 
     def clip_params(heston_params: np.ndarray) -> np.ndarray:
         """
@@ -1203,22 +1217,31 @@ def calibrate_heston(
         )
         # Get Jacobian for each dot
         J = JacHes(model_parameters=model_parameters, market_parameters=market)
-
-        # K = karr
-        F = np.ones(len(karr)) * market.S
-        weights = np.ones_like(karr)
+        weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
-        # fHes counts only for calls, recount puts prices via put-call parity
-        P = C + np.exp(-market.r * market.T) * (karr - F)
-        X_ = C
-        X_[~typ] = P[~typ]
-        res = X_ - market.C
+        res = C - market.C
         return res * weights, J @ np.diag(weights)
 
-    typ = np.where(tick["type"] == "call", True, False)
     res = LevenbergMarquardt(50, get_residuals, clip_params, start_params)
     calibrated_params = np.array(res["x"], dtype=np.float64)
     names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
     error = res["objective"][-1]
     print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
+
+    # decomm if you want to see colebrated prices
+    # final_params = ModelParameters(
+    #         calibrated_params[0],
+    #         calibrated_params[1],
+    #         calibrated_params[2],
+    #         calibrated_params[3],
+    #         calibrated_params[4],
+    #     )
+    # final_prices = fHes(
+    #         model_parameters=final_params,
+    #         market_parameters=market,
+    #     )
+    
+    # print("market", market.C)
+    # print("final", final_prices)
+    # print("========")
     return calibrated_params, error
