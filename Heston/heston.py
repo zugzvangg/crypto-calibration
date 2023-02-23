@@ -1,6 +1,8 @@
 import numba as nb
 import numpy as np
-from typing import Final
+from typing import Final, Tuple
+import pandas as pd
+from levenberg_marquardt import LevenbergMarquardt
 
 _spec_market_params = [
     ("S", nb.float64),
@@ -46,7 +48,12 @@ class MarketParameters(object):
     C: nb.float64[:]
 
     def __init__(
-        self, S: nb.float64, r: nb.float64, T: nb.float64[:], K: nb.float64[:], C: nb.float64[:] 
+        self,
+        S: nb.float64,
+        r: nb.float64,
+        T: nb.float64[:],
+        K: nb.float64[:],
+        C: nb.float64[:],
     ):
         self.S = S
         self.r = r
@@ -1087,3 +1094,131 @@ def JacHes(
         jacs[4][l] = dv0
 
     return jacs
+
+
+def get_tick(df: pd.DataFrame, timestamp: int = None):
+    """Function gets tick for each expiration and strike
+    from closest timestamp from given. If timestamp is None, it takes last one."""
+    if timestamp:
+        data = df[df["timestamp"] <= timestamp].copy()
+    else:
+        data = df.copy()
+    # tau is time before expiration in years
+    data["tau"] = (data.expiration - data.timestamp) / 1e6 / 3600 / 24 / 365
+    data_grouped = (
+        data.groupby(["type", "expiration", "strike_price"])
+        .agg(lambda x: x.iloc[-1])
+        .reset_index()
+        .drop(["timestamp"], axis=1)
+    )
+    data_grouped = data_grouped[data_grouped["tau"] > 0.0]
+    # We need Only out of the money to calibrate
+    data_grouped = data_grouped[
+        (
+            (data_grouped["type"] == "call")
+            & (data_grouped["underlying_price"] <= data_grouped["strike_price"])
+        )
+        | (
+            (data_grouped["type"] == "put")
+            & (data_grouped["underlying_price"] >= data_grouped["strike_price"])
+        )
+    ]
+    data_grouped["mark_price_usd"] = (
+        data_grouped["mark_price"] * data_grouped["underlying_price"]
+    )
+    data_grouped = data_grouped[data_grouped["strike_price"] <= 10_000]
+    return data_grouped
+
+
+def calibrate_heston(
+    df: pd.DataFrame,
+    start_params: np.array,
+    timestamp: int = None,
+):
+    """
+    Function to calibrate Heston model.
+    Attributes:
+        df (pd.DataFrame): Dataframe history
+        start_params (np.array): Params to start calibration via LM from
+        timestamp (int): On which timestamp to calibrate the model
+    Return:
+        calibrated_params (np.array): Array of optimal params on timestamp tick.
+        error (float): Value of error on calibration.
+
+    """
+    # get market params on this tick
+    tick = get_tick(df=df, timestamp=timestamp)
+    karr = tick.strike_price.to_numpy(dtype=np.float64)
+    carr = tick.mark_price_usd.to_numpy(dtype=np.float64)
+    tarr = tick.tau.to_numpy(dtype=np.float64)
+    # take it zero as on deribit
+    r_val = np.float64(0.0)
+    # tick dataframes may have not similar timestamps -->
+    # not equak value if underlying --> take mean
+    S_val = np.float64(tick.underlying_price.mean())
+    market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, C=carr)
+
+    def clip_params(heston_params: np.ndarray) -> np.ndarray:
+        """
+        This funciton project heston parameters into valid range
+        Attributes:
+            heston_params(np.ndarray): model parameters
+        Returns:
+            heston_params(np.ndarray): clipped parameters
+        """
+        eps = 1e-4
+        for i in range(len(heston_params) // 5):
+            a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
+            a = np.clip(a, eps, 100.0)
+            b = np.clip(b, eps, 5.0)
+            c = np.clip(c, eps, 100.0)
+            rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
+            v0 = np.clip(v0, eps, 100.0)
+            heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
+
+        return heston_params
+
+    def get_residuals(heston_params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Function calculates residuals of market prices and calibrated ones
+        and Jacobian matrix
+        Args:
+            heston_params(np.ndarray): model params
+        Returns:
+            res(np.ndarray) : vector or residuals
+            J(np.ndarray)   : Jacobian
+        """
+        # Get the needed format for calibration
+        model_parameters = ModelParameters(
+            heston_params[0],
+            heston_params[1],
+            heston_params[2],
+            heston_params[3],
+            heston_params[4],
+        )
+        # count prices for each option
+        C = fHes(
+            model_parameters=model_parameters,
+            market_parameters=market,
+        )
+        # Get Jacobian for each dot
+        J = JacHes(model_parameters=model_parameters, market_parameters=market)
+
+        # K = karr
+        F = np.ones(len(karr)) * market.S
+        weights = np.ones_like(karr)
+        weights = weights / np.sum(weights)
+        # fHes counts only for calls, recount puts prices via put-call parity
+        P = C + np.exp(-market.r * market.T) * (karr - F)
+        X_ = C
+        X_[~typ] = P[~typ]
+        res = X_ - market.C
+        return res * weights, J @ np.diag(weights)
+
+    typ = np.where(tick["type"] == "call", True, False)
+    res = LevenbergMarquardt(50, get_residuals, clip_params, start_params)
+    calibrated_params = np.array(res["x"], dtype=np.float64)
+    names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
+    error = res["objective"][-1]
+    print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
+    return calibrated_params, error
