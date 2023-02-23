@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Tuple, Callable, Dict
 import numba as nb
-import matplotlib.pyplot as plt
 
 # nb.njit
 def LevenbergMarquardt(Niter:int, 

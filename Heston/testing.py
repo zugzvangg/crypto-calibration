@@ -111,11 +111,11 @@ v0 = np.float64(0.08)
 model = ModelParameters(a=a, b=b, c=c, rho=rho, v0=v0)
 
 # fHes demo
-# x = fHes(
-#     model_parameters=model,
-#     market_parameters=market,
-# )
-# print(x)
+x = fHes(
+    model_parameters=model,
+    market_parameters=market,
+)
+print(x)
 
 # HesIntJac demo
 # res = HesIntJac(
