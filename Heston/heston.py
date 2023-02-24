@@ -645,14 +645,10 @@ def fHes(
         pv = np.float64(0.0)
         if market_parameters.types[l]:
             # calls
-            pv = tmp + disc * (Qv1 - K * Qv2)
+            pv =  disc * (Qv1 - K * Qv2) + tmp
         else:
             # puts
-            pv = (
-                tmp
-                + disc * (Qv1 - K * Qv2)
-                + np.exp(-market_parameters.r * T) * (K - market_parameters.S)
-            )
+            pv =  disc * (Qv1 - K * Qv2) - tmp
         x[l] = pv
     return x
 
