@@ -1245,7 +1245,7 @@ def calibrate_heston(
     calibrated_params = np.array(res["x"], dtype=np.float64)
     names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
     error = res["objective"][-1]
-    print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
+    # print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
 
     # decomm if you want to see colebrated prices
     # final_params = ModelParameters(
