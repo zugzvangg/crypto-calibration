@@ -32,7 +32,6 @@ def LevenbergMarquardt(Niter:int,
     nu1 = 2.0
     nu2 = 2.0
 
-    # fs = []
     res, J = f(x)
     # сумма квадратов остатков
     F = np.linalg.norm(res)
