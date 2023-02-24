@@ -645,10 +645,10 @@ def fHes(
         pv = np.float64(0.0)
         if market_parameters.types[l]:
             # calls
-            pv =  disc * (Qv1 - K * Qv2) + tmp
+            pv = disc * (Qv1 - K * Qv2) + tmp
         else:
             # puts
-            pv =  disc * (Qv1 - K * Qv2) - tmp
+            pv = disc * (Qv1 - K * Qv2) - tmp
         x[l] = pv
     return x
 
@@ -1137,12 +1137,17 @@ def get_tick(df: pd.DataFrame, timestamp: int = None):
         data = df.copy()
     # tau is time before expiration in years
     data["tau"] = (data.expiration - data.timestamp) / 1e6 / 3600 / 24 / 365
-    data_grouped = (
-        data.groupby(["type", "expiration", "strike_price"])
-        .agg(lambda x: x.iloc[-1])
-        .reset_index()
-        .drop(["timestamp"], axis=1)
-    )
+    # data_grouped = (
+    #     data.groupby(["type", "expiration", "strike_price"])
+    #     .agg(lambda x: x.iloc[-1])
+    #     .reset_index()
+    #     .drop(["timestamp"], axis=1)
+    # )
+
+    data_grouped = data.loc[
+        data.groupby(["type", "expiration", "strike_price"])["timestamp"].idxmax()
+    ]
+
     data_grouped = data_grouped[data_grouped["tau"] > 0.0]
     # We need Only out of the money to calibrate
     data_grouped = data_grouped[
@@ -1159,6 +1164,7 @@ def get_tick(df: pd.DataFrame, timestamp: int = None):
         data_grouped["mark_price"] * data_grouped["underlying_price"]
     )
     data_grouped = data_grouped[data_grouped["strike_price"] <= 10_000]
+    # print(data_grouped)
     return data_grouped
 
 
@@ -1202,11 +1208,11 @@ def calibrate_heston(
         eps = 1e-4
         for i in range(len(heston_params) // 5):
             a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-            a = np.clip(a, eps, 100.0)
-            b = np.clip(b, eps, 5.0)
-            c = np.clip(c, eps, 100.0)
+            a = np.clip(a, eps, 10.0)
+            b = np.clip(b, eps, 10.0)
+            c = np.clip(c, eps, 10.0)
             rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
-            v0 = np.clip(v0, eps, 100.0)
+            v0 = np.clip(v0, eps, 10.0)
             heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
 
         return heston_params
