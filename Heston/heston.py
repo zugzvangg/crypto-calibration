@@ -1170,19 +1170,37 @@ def calibrate_heston(
     df: pd.DataFrame,
     start_params: np.array,
     timestamp: int = None,
-):
+    calibration_type: str = "all",
+) -> Tuple[np.ndarray, float]:
     """
-    Calibration of all 5 params
     Function to calibrate Heston model.
     Attributes:
-        df (pd.DataFrame): Dataframe history
-        start_params (np.array): Params to start calibration via LM from
-        timestamp (int): On which timestamp to calibrate the model
+        @param df (pd.DataFrame): Dataframe with history
+        [
+            timestamp(ns),
+            type(put or call),
+            strike_price(usd),
+            expiration(ns),
+            mark_price(etc/btc),
+            underlying_price(usd)
+        ]
+        @param start_params (np.array): Params to start calibration via LM from
+        @param timestamp (int): On which timestamp to calibrate the model.
+            Should be in range of df timestamps.
+        @param calibration_type(str): Type of calibration. Should be one of: ["all", ...]
+
     Return:
         calibrated_params (np.array): Array of optimal params on timestamp tick.
         error (float): Value of error on calibration.
-
     """
+
+    available_calibration_types = [
+        "all", "test",
+    ]
+    if calibration_type not in available_calibration_types:
+        raise ValueError(
+            f"calibration_type should be from {available_calibration_types}"
+        )
     # get market params on this tick
     tick = get_tick(df=df, timestamp=timestamp)
     karr = tick.strike_price.to_numpy(dtype=np.float64)
@@ -1227,6 +1245,9 @@ def calibrate_heston(
             J(np.ndarray)   : Jacobian
         """
         # Get the needed format for calibration
+
+        
+
         model_parameters = ModelParameters(
             heston_params[0],
             heston_params[1],
@@ -1239,17 +1260,18 @@ def calibrate_heston(
             model_parameters=model_parameters,
             market_parameters=market,
         )
-        # Get Jacobian for each dot
+        # Get Jacobian for each dot, all 5 params
         J = JacHes(model_parameters=model_parameters, market_parameters=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = C - market.C
         return res * weights, J @ np.diag(weights)
 
-    res = LevenbergMarquardt(50, get_residuals, clip_params, start_params)
+    res = LevenbergMarquardt(100, get_residuals, clip_params, start_params)
     calibrated_params = np.array(res["x"], dtype=np.float64)
-    names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
     error = res["objective"][-1]
+    
+    # names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
     # print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
 
     # decomm if you want to see colebrated prices
