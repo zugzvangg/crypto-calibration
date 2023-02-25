@@ -1133,16 +1133,14 @@ def get_tick(df: pd.DataFrame, timestamp: int = None):
     from closest timestamp from given. If timestamp is None, it takes last one."""
     if timestamp:
         data = df[df["timestamp"] <= timestamp].copy()
+        # only not expired on curret tick
+        data = data[data["expiration"] > timestamp].copy()
     else:
         data = df.copy()
+        # only not expired on max available tick
+        data = data[data["expiration"] > data["timestamp"].max()].copy()
     # tau is time before expiration in years
     data["tau"] = (data.expiration - data.timestamp) / 1e6 / 3600 / 24 / 365
-    # data_grouped = (
-    #     data.groupby(["type", "expiration", "strike_price"])
-    #     .agg(lambda x: x.iloc[-1])
-    #     .reset_index()
-    #     .drop(["timestamp"], axis=1)
-    # )
 
     data_grouped = data.loc[
         data.groupby(["type", "expiration", "strike_price"])["timestamp"].idxmax()
@@ -1174,6 +1172,7 @@ def calibrate_heston(
     timestamp: int = None,
 ):
     """
+    Calibration of all 5 params
     Function to calibrate Heston model.
     Attributes:
         df (pd.DataFrame): Dataframe history
@@ -1208,11 +1207,11 @@ def calibrate_heston(
         eps = 1e-4
         for i in range(len(heston_params) // 5):
             a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-            a = np.clip(a, eps, 10.0)
-            b = np.clip(b, eps, 10.0)
-            c = np.clip(c, eps, 10.0)
+            a = np.clip(a, eps, 10000.0)
+            b = np.clip(b, eps, 100.0)
+            c = np.clip(c, eps, 1000.0)
             rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
-            v0 = np.clip(v0, eps, 10.0)
+            v0 = np.clip(v0, eps, 100.0)
             heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
 
         return heston_params
