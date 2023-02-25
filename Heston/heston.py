@@ -1195,7 +1195,8 @@ def calibrate_heston(
     """
 
     available_calibration_types = [
-        "all", "test",
+        "all",
+        "test",
     ]
     if calibration_type not in available_calibration_types:
         raise ValueError(
@@ -1245,49 +1246,67 @@ def calibrate_heston(
             J(np.ndarray)   : Jacobian
         """
         # Get the needed format for calibration
+        if calibration_type == "all":
+            model_parameters = ModelParameters(
+                heston_params[0],
+                heston_params[1],
+                heston_params[2],
+                heston_params[3],
+                heston_params[4],
+            )
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)
 
-        
+        if calibration_type == "test":
+            model_parameters = ModelParameters(
+                param_test,
+                heston_params[0],
+                heston_params[1],
+                heston_params[2],
+                heston_params[3],
+            )
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:]
 
-        model_parameters = ModelParameters(
-            heston_params[0],
-            heston_params[1],
-            heston_params[2],
-            heston_params[3],
-            heston_params[4],
-        )
         # count prices for each option
         C = fHes(
             model_parameters=model_parameters,
             market_parameters=market,
         )
-        # Get Jacobian for each dot, all 5 params
-        J = JacHes(model_parameters=model_parameters, market_parameters=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = C - market.C
         return res * weights, J @ np.diag(weights)
 
-    res = LevenbergMarquardt(100, get_residuals, clip_params, start_params)
-    calibrated_params = np.array(res["x"], dtype=np.float64)
+    # function supports several calibration types
+    if calibration_type == "all":
+        res = LevenbergMarquardt(100, get_residuals, clip_params, start_params)
+        calibrated_params = np.array(res["x"], dtype=np.float64)
+
+    elif calibration_type == "test":
+        # put any way of finding needed param here
+        param_test = np.float64(3.0)
+        res = LevenbergMarquardt(100, get_residuals, clip_params, start_params[1:])
+        calibrated_params = np.array(res["x"], dtype=np.float64)
+        calibrated_params = np.concatenate([np.array([param_test]), calibrated_params])
+
     error = res["objective"][-1]
-    
+
     # names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
     # print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
 
     # decomm if you want to see colebrated prices
-    # final_params = ModelParameters(
-    #         calibrated_params[0],
-    #         calibrated_params[1],
-    #         calibrated_params[2],
-    #         calibrated_params[3],
-    #         calibrated_params[4],
-    #     )
-    # final_prices = fHes(
-    #         model_parameters=final_params,
-    #         market_parameters=market,
-    #     )
+    final_params = ModelParameters(
+            calibrated_params[0],
+            calibrated_params[1],
+            calibrated_params[2],
+            calibrated_params[3],
+            calibrated_params[4],
+        )
+    final_prices = fHes(
+            model_parameters=final_params,
+            market_parameters=market,
+        )
 
-    # print("market", market.C)
-    # print("final", final_prices)
-    # print("========")
+    print("market", market.C)
+    print("final", final_prices)
+    print("========")
     return calibrated_params, error

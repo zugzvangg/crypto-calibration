@@ -37,7 +37,8 @@ def LevenbergMarquardt(Niter:int,
     F = np.linalg.norm(res)
     
     result = { "xs":[x], "objective":[F], "x":None }
-    
+    eps = 1e-10
+
     for i in range(Niter):
         multipl = J @ J.T
         I = np.diag(np.diag(multipl)) + 1e-5 * np.eye(len(x))
@@ -54,7 +55,6 @@ def LevenbergMarquardt(Niter:int,
             i -= 1
             mu *= nu2
             continue        
-        eps = 1e-10
         if F < eps:
             break
         result['x'] = x
