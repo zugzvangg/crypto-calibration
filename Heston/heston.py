@@ -629,6 +629,7 @@ def fHes(
         T = market_parameters.T[l]
         disc = np.exp(-market_parameters.r * T)
         tmp = 0.5 * (market_parameters.S - K * disc)
+        # tmp = 0.5 * (market_parameters.S - K) * disc
         disc = disc / pi
         y1, y2 = nb.float64(0.0), nb.float64(0.0)
 
@@ -643,11 +644,21 @@ def fHes(
         Qv1 = Q * y1
         Qv2 = Q * y2
         pv = np.float64(0.0)
+        delta= 0.5+Qv1/pi
+        print(delta)
+
         if market_parameters.types[l]:
             # calls
+            # p1 = market_parameters.S*(0.5 + Qv1/pi)
+            # p2 = K*np.exp(-market_parameters.r * T)*(0.5 + Qv2/pi)
+            # orig = p1 - p2
             pv = disc * (Qv1 - K * Qv2) + tmp
+            # print(pv, orig)
         else:
             # puts
+            # p1 = market_parameters.S*(- 0.5 + Qv1/pi) 
+            # p2 = K*np.exp(-market_parameters.r * T)*(- 0.5 + Qv2/pi)
+            # orig = p1 - p2
             pv = disc * (Qv1 - K * Qv2) - tmp
         x[l] = pv
     return x

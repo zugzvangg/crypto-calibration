@@ -1,6 +1,5 @@
 from heston import MarketParameters, ModelParameters, fHes, JacHes, HesIntMN, HesIntJac
 import numpy as np
-from levenberg_marquardt import Levenberg_Marquardt
 from typing import Tuple
 
 karr = np.array(
@@ -96,9 +95,13 @@ tarr = np.array(
     dtype=np.float64,
 )
 S_val = np.float64(1.0)
+# r_val = np.float64(0.00)
 r_val = np.float64(0.02)
+C = np.ones(len(tarr), dtype=np.float64)
 
-market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val)
+types = np.ones(len(tarr), dtype=bool)
+market = MarketParameters(K=karr, T=tarr, S=S_val, 
+r=r_val, types=types, C = C)
 
 a = np.float64(3.0)  # kappa                           |  mean reversion rate
 b = np.float64(0.10)  # v_infinity                      |  long term variance
@@ -131,6 +134,7 @@ print(x)
 #     market_parameters=market,
 # )
 # print(hes)
+# print(122)
 
 
 
