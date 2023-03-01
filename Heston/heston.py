@@ -3,6 +3,9 @@ import numpy as np
 from typing import Final, Tuple
 import pandas as pd
 from levenberg_marquardt import LevenbergMarquardt
+from typing import Union
+from scipy import stats as sps
+
 
 _spec_market_params = [
     ("S", nb.float64),
@@ -644,8 +647,8 @@ def fHes(
         Qv1 = Q * y1
         Qv2 = Q * y2
         pv = np.float64(0.0)
-        delta= 0.5+Qv1/pi
-        print(delta)
+        delta = 0.5 + Qv1 / pi
+        # print(delta)
 
         if market_parameters.types[l]:
             # calls
@@ -656,7 +659,7 @@ def fHes(
             # print(pv, orig)
         else:
             # puts
-            # p1 = market_parameters.S*(- 0.5 + Qv1/pi) 
+            # p1 = market_parameters.S*(- 0.5 + Qv1/pi)
             # p2 = K*np.exp(-market_parameters.r * T)*(- 0.5 + Qv2/pi)
             # orig = p1 - p2
             pv = disc * (Qv1 - K * Qv2) - tmp
@@ -1139,6 +1142,93 @@ def JacHes(
     return jacs
 
 
+# Newton-Raphsen
+def get_implied_volatility(
+    option_type: str,
+    C: float,
+    K: float,
+    T: float,
+    F: float,
+    r: float = 0.0,
+    error: float = 0.001,
+) -> float:
+    """
+    Function to count implied volatility via given params of option, using Newton-Raphson method :
+
+    Args:
+        C (float): Option market price(USD).
+        K (float): Strike(USD).
+        T (float): Time to expiration in years.
+        F (float): Underlying price.
+        r (float): Risk-free rate.
+        error (float): Given threshhold of error.
+
+    Returns:
+        float: Implied volatility in percent.
+    """
+    vol = 1.0
+    dv = error + 1
+    while abs(dv) > error:
+        d1 = (np.log(F / K) + 0.5 * vol**2 * T) / (vol * np.sqrt(T))
+        d2 = d1 - vol * np.sqrt(T)
+        D = np.exp(-r * T)
+        if option_type.lower() == "call":
+            price = F * sps.norm.cdf(d1) - K * sps.norm.cdf(d2) * D
+        elif option_type.lower() == "put":
+            price = -F * sps.norm.cdf(-d1) + K * sps.norm.cdf(-d2) * D
+        else:
+            raise ValueError("Wrong option type, must be 'call' or 'put' ")
+        Vega = F * np.sqrt(T / np.pi / 2) * np.exp(-0.5 * d1**2)
+        PriceError = price - C
+        dv = PriceError / Vega
+        vol = vol - dv
+    return vol
+
+
+def get_nu0(df: pd.DataFrame):
+    tick = df.copy()
+    # get closrst expiration
+    tick = tick[tick["expiration"] == tick["expiration"].min()]
+    tick["dist"] = abs(tick["strike_price"] - tick["underlying_price"])
+    # get closest call
+    closest_call = tick[tick["type"] == "call"]
+    closest_call = closest_call[
+        closest_call["dist"] == closest_call["dist"].min()
+    ].iloc[0]
+    # get closest put
+    closest_put = tick[tick["type"] == "put"]
+    closest_put = closest_put[closest_put["dist"] == closest_put["dist"].min()].iloc[0]
+
+    call_iv = get_implied_volatility(
+        option_type=closest_call["type"],
+        C=closest_call["mark_price_usd"],
+        K=closest_call["strike_price"],
+        T=closest_call["tau"],
+        F=closest_call["underlying_price"],
+        r=0.0,
+        error=0.001,
+    )
+
+    put_iv = get_implied_volatility(
+        option_type=closest_put["type"],
+        C=closest_put["mark_price_usd"],
+        K=closest_put["strike_price"],
+        T=closest_put["tau"],
+        F=closest_put["underlying_price"],
+        r=0.0,
+        error=0.001,
+    )
+
+    forward = (closest_put["underlying_price"] + closest_call["underlying_price"]) / 2
+    strike_diff = abs(closest_call["strike_price"] - closest_put["strike_price"])
+    iv = (
+        call_iv * (closest_call["strike_price"] - forward) / strike_diff
+        + put_iv * (forward - closest_put["strike_price"]) / strike_diff
+    )
+    nu0 = iv**2
+    return nu0
+
+
 def get_tick(df: pd.DataFrame, timestamp: int = None):
     """Function gets tick for each expiration and strike
     from closest timestamp from given. If timestamp is None, it takes last one."""
@@ -1198,7 +1288,7 @@ def calibrate_heston(
         @param start_params (np.array): Params to start calibration via LM from
         @param timestamp (int): On which timestamp to calibrate the model.
             Should be in range of df timestamps.
-        @param calibration_type(str): Type of calibration. Should be one of: ["all", ...]
+        @param calibration_type(str): Type of calibration. Should be one of: ["all", "nu0"]
 
     Return:
         calibrated_params (np.array): Array of optimal params on timestamp tick.
@@ -1207,7 +1297,7 @@ def calibrate_heston(
 
     available_calibration_types = [
         "all",
-        "test",
+        "nu0",
     ]
     if calibration_type not in available_calibration_types:
         raise ValueError(
@@ -1235,14 +1325,25 @@ def calibrate_heston(
             heston_params(np.ndarray): clipped parameters
         """
         eps = 1e-4
-        for i in range(len(heston_params) // 5):
-            a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-            a = np.clip(a, eps, 10000.0)
-            b = np.clip(b, eps, 100.0)
-            c = np.clip(c, eps, 1000.0)
-            rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
-            v0 = np.clip(v0, eps, 100.0)
-            heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
+
+        def clip_all(params):
+            heston_params = params
+            for i in range(len(heston_params) // 5):
+                a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
+                a = np.clip(a, eps, 10000.0)
+                b = np.clip(b, eps, 100.0)
+                c = np.clip(c, eps, 1000.0)
+                rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
+                v0 = np.clip(v0, eps, 100.0)
+                heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
+            return heston_params
+
+        if calibration_type == "all":
+            heston_params = clip_all(heston_params)
+
+        if calibration_type == "nu0":
+            heston_params = np.concatenate([heston_params, np.array([nu0])])
+            heston_params = clip_all(heston_params)[:-1]
 
         return heston_params
 
@@ -1267,15 +1368,15 @@ def calibrate_heston(
             )
             J = JacHes(model_parameters=model_parameters, market_parameters=market)
 
-        if calibration_type == "test":
+        if calibration_type == "nu0":
             model_parameters = ModelParameters(
-                param_test,
                 heston_params[0],
                 heston_params[1],
                 heston_params[2],
                 heston_params[3],
+                nu0
             )
-            J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:]
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)[:-1]
 
         # count prices for each option
         C = fHes(
@@ -1292,12 +1393,13 @@ def calibrate_heston(
         res = LevenbergMarquardt(100, get_residuals, clip_params, start_params)
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
-    elif calibration_type == "test":
-        # put any way of finding needed param here
-        param_test = np.float64(3.0)
-        res = LevenbergMarquardt(100, get_residuals, clip_params, start_params[1:])
+    elif calibration_type == "nu0":
+        # finding nu0
+        nu0 = get_nu0(tick)
+        # all params exluding nu0 to LM
+        res = LevenbergMarquardt(100, get_residuals, clip_params, start_params[:-1])
         calibrated_params = np.array(res["x"], dtype=np.float64)
-        calibrated_params = np.concatenate([np.array([param_test]), calibrated_params])
+        calibrated_params = np.concatenate([calibrated_params, np.array([nu0])])
 
     error = res["objective"][-1]
 
@@ -1305,19 +1407,19 @@ def calibrate_heston(
     # print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
 
     # decomm if you want to see colebrated prices
-    final_params = ModelParameters(
-            calibrated_params[0],
-            calibrated_params[1],
-            calibrated_params[2],
-            calibrated_params[3],
-            calibrated_params[4],
-        )
-    final_prices = fHes(
-            model_parameters=final_params,
-            market_parameters=market,
-        )
+    # final_params = ModelParameters(
+    #     calibrated_params[0],
+    #     calibrated_params[1],
+    #     calibrated_params[2],
+    #     calibrated_params[3],
+    #     calibrated_params[4],
+    # )
+    # final_prices = fHes(
+    #     model_parameters=final_params,
+    #     market_parameters=market,
+    # )
 
-    print("market", market.C)
-    print("final", final_prices)
-    print("========")
+    # print("market", market.C)
+    # print("final", final_prices)
+    # print("========")
     return calibrated_params, error
