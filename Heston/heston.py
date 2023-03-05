@@ -160,7 +160,7 @@ ub: Final[np.int32] = np.int32(200)
 Q: Final[np.float64] = np.float64(0.5 * (ub - lb))
 P: Final[np.float64] = np.float64(0.5 * (ub + lb))
 
-# разбивка от 0 до 1
+# точки, в которых считаеются квадратуры
 u64 = np.array(
     [
         0.0243502926634244325089558,
@@ -198,6 +198,8 @@ u64 = np.array(
     ],
     dtype=np.float64,
 )
+
+# веса квадратуры Гаусса, от 0 до 1, т.к. интеграл нужен от 0
 w64 = np.array(
     [
         0.0486909570091397203833654,
@@ -1229,6 +1231,40 @@ def get_nu0(df: pd.DataFrame):
     return nu0
 
 
+def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
+    if timestamp:
+        data = df.query(f"timestamp<={timestamp}").copy()
+    else:
+        data = df.copy()
+    forward = (
+        data[["timestamp", "underlying_price"]]
+        .drop_duplicates()
+        .sort_values("timestamp")
+    )
+    forward["underlying_price_prev"] = forward["underlying_price"].shift(1)
+    forward["timestamp_prev"] = forward["timestamp"].shift(1)
+    forward["residual"] = (
+        forward["underlying_price"] - forward["underlying_price_prev"]
+    ) / (
+        forward["underlying_price_prev"]
+        * (
+            np.sqrt(forward["timestamp"] - forward["timestamp_prev"])
+            / 1e6
+            / 3600
+            / 24
+            / 365
+        )
+    )
+
+    alpha_bar = (
+        (forward["residual"] - forward["residual"].sum() / (forward.shape[0] + 1)).sum()
+        ** 2
+        / forward.shape[0]
+        / 100
+    )
+    return alpha_bar
+
+
 def get_tick(df: pd.DataFrame, timestamp: int = None):
     """Function gets tick for each expiration and strike
     from closest timestamp from given. If timestamp is None, it takes last one."""
@@ -1295,10 +1331,7 @@ def calibrate_heston(
         error (float): Value of error on calibration.
     """
 
-    available_calibration_types = [
-        "all",
-        "nu0",
-    ]
+    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar"]
     if calibration_type not in available_calibration_types:
         raise ValueError(
             f"calibration_type should be from {available_calibration_types}"
@@ -1330,11 +1363,11 @@ def calibrate_heston(
             heston_params = params
             for i in range(len(heston_params) // 5):
                 a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-                a = np.clip(a, eps, 10000.0)
-                b = np.clip(b, eps, 100.0)
-                c = np.clip(c, eps, 1000.0)
+                a = np.clip(a, eps, 100.0)
+                b = np.clip(b, eps, 3.0)
+                c = np.clip(c, eps, 20.0)
                 rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
-                v0 = np.clip(v0, eps, 100.0)
+                v0 = np.clip(v0, eps, 5.0)
                 heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
             return heston_params
 
@@ -1344,6 +1377,18 @@ def calibrate_heston(
         if calibration_type == "nu0":
             heston_params = np.concatenate([heston_params, np.array([nu0])])
             heston_params = clip_all(heston_params)[:-1]
+
+        elif calibration_type == "nu0_and_nu_bar":
+            # heston_params = np.concatenate([heston_params, np.array([nu0])])
+            heston_params = np.concatenate(
+                [
+                    heston_params[0:1],
+                    np.array([nu_bar]),
+                    heston_params[1:3],
+                    np.array([nu0]),
+                ]
+            )
+            heston_params = np.concatenate([heston_params[0:1], heston_params[2:-1]])
 
         return heston_params
 
@@ -1374,9 +1419,20 @@ def calibrate_heston(
                 heston_params[1],
                 heston_params[2],
                 heston_params[3],
-                nu0
+                nu0,
             )
             J = JacHes(model_parameters=model_parameters, market_parameters=market)[:-1]
+
+        elif calibration_type == "nu0_and_nu_bar":
+            model_parameters = ModelParameters(
+                heston_params[0],
+                nu_bar,
+                heston_params[1],
+                heston_params[2],
+                nu0,
+            )
+            J_tmp = JacHes(model_parameters=model_parameters, market_parameters=market)
+            J = np.concatenate([J_tmp[0:1], J_tmp[2:-1]])
 
         # count prices for each option
         C = fHes(
@@ -1390,16 +1446,28 @@ def calibrate_heston(
 
     # function supports several calibration types
     if calibration_type == "all":
-        res = LevenbergMarquardt(100, get_residuals, clip_params, start_params)
+        res = LevenbergMarquardt(200, get_residuals, clip_params, start_params)
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
     elif calibration_type == "nu0":
         # finding nu0
         nu0 = get_nu0(tick)
         # all params exluding nu0 to LM
-        res = LevenbergMarquardt(100, get_residuals, clip_params, start_params[:-1])
+        res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[:-1])
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate([calibrated_params, np.array([nu0])])
+
+    elif calibration_type == "nu0_and_nu_bar":
+        # finding nu0
+        nu0 = get_nu0(tick)
+        # finding nu0_bar
+        nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
+        res = LevenbergMarquardt(
+            200,
+            get_residuals,
+            clip_params,
+            np.concatenate([start_params[0:1], start_params[2:-1]]),
+        )
 
     error = res["objective"][-1]
 
@@ -1407,19 +1475,19 @@ def calibrate_heston(
     # print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
 
     # decomm if you want to see colebrated prices
-    # final_params = ModelParameters(
-    #     calibrated_params[0],
-    #     calibrated_params[1],
-    #     calibrated_params[2],
-    #     calibrated_params[3],
-    #     calibrated_params[4],
-    # )
-    # final_prices = fHes(
-    #     model_parameters=final_params,
-    #     market_parameters=market,
-    # )
+    final_params = ModelParameters(
+        calibrated_params[0],
+        calibrated_params[1],
+        calibrated_params[2],
+        calibrated_params[3],
+        calibrated_params[4],
+    )
+    final_prices = fHes(
+        model_parameters=final_params,
+        market_parameters=market,
+    )
 
     # print("market", market.C)
     # print("final", final_prices)
     # print("========")
-    return calibrated_params, error
+    return calibrated_params, error, final_prices
