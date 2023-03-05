@@ -1363,7 +1363,7 @@ def calibrate_heston(
             heston_params = params
             for i in range(len(heston_params) // 5):
                 a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-                a = np.clip(a, eps, 100.0)
+                a = np.clip(a, eps, 10.0)
                 b = np.clip(b, eps, 3.0)
                 c = np.clip(c, eps, 20.0)
                 rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
@@ -1388,6 +1388,7 @@ def calibrate_heston(
                     np.array([nu0]),
                 ]
             )
+            heston_params = clip_all(heston_params)
             heston_params = np.concatenate([heston_params[0:1], heston_params[2:-1]])
 
         return heston_params
@@ -1431,6 +1432,7 @@ def calibrate_heston(
                 heston_params[2],
                 nu0,
             )
+            
             J_tmp = JacHes(model_parameters=model_parameters, market_parameters=market)
             J = np.concatenate([J_tmp[0:1], J_tmp[2:-1]])
 
@@ -1462,12 +1464,22 @@ def calibrate_heston(
         nu0 = get_nu0(tick)
         # finding nu0_bar
         nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
+        # nu_bar = get_alpha_bar(df=df)
         res = LevenbergMarquardt(
             200,
             get_residuals,
             clip_params,
             np.concatenate([start_params[0:1], start_params[2:-1]]),
         )
+        calibrated_params = np.array(res["x"], dtype=np.float64)
+        calibrated_params = np.concatenate(
+                [
+                    calibrated_params[0:1],
+                    np.array([nu_bar]),
+                    calibrated_params[1:3],
+                    np.array([nu0]),
+                ]
+            )
 
     error = res["objective"][-1]
 
