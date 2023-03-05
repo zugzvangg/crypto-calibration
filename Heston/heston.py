@@ -1363,7 +1363,7 @@ def calibrate_heston(
             heston_params = params
             for i in range(len(heston_params) // 5):
                 a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-                a = np.clip(a, eps, 10.0)
+                a = np.clip(a, eps, 100.0)
                 b = np.clip(b, eps, 3.0)
                 c = np.clip(c, eps, 20.0)
                 rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
@@ -1432,7 +1432,7 @@ def calibrate_heston(
                 heston_params[2],
                 nu0,
             )
-            
+
             J_tmp = JacHes(model_parameters=model_parameters, market_parameters=market)
             J = np.concatenate([J_tmp[0:1], J_tmp[2:-1]])
 
@@ -1473,18 +1473,15 @@ def calibrate_heston(
         )
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate(
-                [
-                    calibrated_params[0:1],
-                    np.array([nu_bar]),
-                    calibrated_params[1:3],
-                    np.array([nu0]),
-                ]
-            )
+            [
+                calibrated_params[0:1],
+                np.array([nu_bar]),
+                calibrated_params[1:3],
+                np.array([nu0]),
+            ]
+        )
 
     error = res["objective"][-1]
-
-    # names = ["kappa", "nu_bar", "sigma", "rho", "nu0"]
-    # print("Optimized parameters:", *zip(names, (calibrated_params).round(5)), sep="\n")
 
     # decomm if you want to see colebrated prices
     final_params = ModelParameters(
@@ -1499,7 +1496,47 @@ def calibrate_heston(
         market_parameters=market,
     )
 
-    # print("market", market.C)
-    # print("final", final_prices)
-    # print("========")
-    return calibrated_params, error, final_prices
+    tick["calibrated_mark_price_usd"] = final_prices
+    market_ivs, calibrated_ivs = [], []
+
+    for index, t in tick.iterrows():
+        market_iv = get_implied_volatility(
+            option_type=t["type"],
+            C=t["mark_price_usd"],
+            K=t["strike_price"],
+            T=t["tau"],
+            F=t["underlying_price"],
+            r=0.0,
+            error=0.001,
+        )
+        market_ivs.append(market_iv)
+
+        calibrated_iv = get_implied_volatility(
+            option_type=t["type"],
+            C=t["calibrated_mark_price_usd"],
+            K=t["strike_price"],
+            T=t["tau"],
+            F=t["underlying_price"],
+            r=0.0,
+            error=0.001,
+        )
+        calibrated_ivs.append(calibrated_iv)
+    tick["market_iv"] = market_ivs 
+    tick["market_iv"] = tick["market_iv"]*100
+
+    tick["calibrated_iv"] = calibrated_ivs
+    tick["calibrated_iv"] = tick["calibrated_iv"]*100
+
+    result = tick[
+        [
+            "type",
+            "strike_price",
+            "expiration",
+            "mark_price_usd",
+            "calibrated_mark_price_usd",
+            "market_iv",
+            "calibrated_iv",
+        ]
+    ].copy()
+
+    return calibrated_params, error, result
