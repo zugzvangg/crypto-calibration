@@ -1331,7 +1331,7 @@ def calibrate_heston(
         error (float): Value of error on calibration.
     """
 
-    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar"]
+    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar", "nu0_and_k"]
     if calibration_type not in available_calibration_types:
         raise ValueError(
             f"calibration_type should be from {available_calibration_types}"
@@ -1363,9 +1363,9 @@ def calibrate_heston(
             heston_params = params
             for i in range(len(heston_params) // 5):
                 a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-                a = np.clip(a, eps, 100.0)
-                b = np.clip(b, eps, 3.0)
-                c = np.clip(c, eps, 20.0)
+                a = np.clip(a, eps, 200.0)
+                b = np.clip(b, eps, 50.0)
+                c = np.clip(c, eps, 100.0)
                 rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
                 v0 = np.clip(v0, eps, 5.0)
                 heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
@@ -1379,7 +1379,6 @@ def calibrate_heston(
             heston_params = clip_all(heston_params)[:-1]
 
         elif calibration_type == "nu0_and_nu_bar":
-            # heston_params = np.concatenate([heston_params, np.array([nu0])])
             heston_params = np.concatenate(
                 [
                     heston_params[0:1],
@@ -1390,6 +1389,10 @@ def calibrate_heston(
             )
             heston_params = clip_all(heston_params)
             heston_params = np.concatenate([heston_params[0:1], heston_params[2:-1]])
+
+        elif calibration_type == "nu0_and_k":
+            heston_params = np.concatenate([np.array([kappa]), heston_params, np.array([nu0])])
+            heston_params = clip_all(heston_params)[1:-1]
 
         return heston_params
 
@@ -1435,6 +1438,16 @@ def calibrate_heston(
 
             J_tmp = JacHes(model_parameters=model_parameters, market_parameters=market)
             J = np.concatenate([J_tmp[0:1], J_tmp[2:-1]])
+        
+        elif calibration_type == "nu0_and_k":
+            model_parameters = ModelParameters(
+                kappa,
+                heston_params[0],
+                heston_params[1],
+                heston_params[2],
+                nu0,
+            )
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:-1]
 
         # count prices for each option
         C = fHes(
@@ -1480,6 +1493,14 @@ def calibrate_heston(
                 np.array([nu0]),
             ]
         )
+    
+    elif calibration_type == "nu0_and_k":
+        nu0 = get_nu0(tick)
+        # kappa = get_kappa()
+        kappa = 12.9
+        res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[1:-1])
+        calibrated_params = np.array(res["x"], dtype=np.float64)
+        calibrated_params = np.concatenate([np.array([kappa]), calibrated_params, np.array([nu0])])
 
     error = res["objective"][-1]
 
