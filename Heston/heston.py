@@ -1302,7 +1302,7 @@ def get_kappa(df, timestamp):
 
     daily["sigma_coef"] = np.sqrt(
         (daily["timestamp_next"] - daily["timestamp"]) / 1e6 / 3600 / 24 / 365
-    )  # *np.random.normal(0.0, 1.0, size=len(res))
+    )  # *np.random.normal(0.0, 1.0, size=len(daily))
     daily = daily[~daily["alpha"].isna()]
 
     lr = LinearRegression()
