@@ -4,6 +4,7 @@ from typing import Final, Tuple
 import pandas as pd
 from levenberg_marquardt import LevenbergMarquardt
 from typing import Union
+from sklearn.linear_model import LinearRegression
 from scipy import stats as sps
 
 
@@ -1237,10 +1238,14 @@ def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
     else:
         data = df.copy()
     forward = (
-        data[["timestamp", "underlying_price"]]
+        data[["dt", "timestamp", "underlying_price"]]
         .drop_duplicates()
         .sort_values("timestamp")
     )
+    # need daily
+    forward["date"] = pd.to_datetime(forward["dt"]).dt.date
+    forward = forward.loc[forward.groupby("date").dt.idxmax()]
+
     forward["underlying_price_prev"] = forward["underlying_price"].shift(1)
     forward["timestamp_prev"] = forward["timestamp"].shift(1)
     forward["residual"] = (
@@ -1248,21 +1253,65 @@ def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
     ) / (
         forward["underlying_price_prev"]
         * (
-            np.sqrt(forward["timestamp"] - forward["timestamp_prev"])
-            / 1e6
-            / 3600
-            / 24
-            / 365
+            np.sqrt(
+                (forward["timestamp"] - forward["timestamp_prev"])
+                / 1e6
+                / 3600
+                / 24
+                / 365
+            )
         )
     )
 
     alpha_bar = (
-        (forward["residual"] - forward["residual"].sum() / (forward.shape[0] + 1)).sum()
-        ** 2
-        / forward.shape[0]
-        / 100
-    )
+        forward["residual"] - forward["residual"].sum() / (forward.shape[0] + 1)
+    ).sum() ** 2 / forward.shape[0]
     return alpha_bar
+
+
+def get_kappa(df, timestamp):
+    if timestamp:
+        data = df.query(f"timestamp<={timestamp}").copy()
+    else:
+        data = df.copy()
+
+    # need it for correct regression
+    alpha_bar_tmp = get_alpha_bar(df=data, timestamp=timestamp)
+
+    daily = (
+        data[["dt", "timestamp", "underlying_price"]]
+        .drop_duplicates()
+        .sort_values("timestamp")
+        .copy()
+    )
+    daily["date"] = pd.to_datetime(daily["dt"]).dt.date
+    daily = daily.loc[daily.groupby("date").dt.idxmax()]
+    # need it weekly
+    daily["rolling_variance"] = (daily["underlying_price"].rolling(window=7).std()) ** 2
+
+    daily["rolling_variance_next"] = daily["rolling_variance"].shift(-1)
+    daily["timestamp_next"] = daily["timestamp"].shift(-1)
+    daily["alpha"] = (
+        daily["rolling_variance_next"] - daily["rolling_variance"]
+    ) / np.sqrt(daily["rolling_variance"])
+    daily["k_coef"] = (
+        alpha_bar_tmp
+        * ((daily["timestamp_next"] - daily["timestamp"]) / 1e6 / 3600 / 24 / 365)
+        - daily["rolling_variance"]
+    ) / np.sqrt(daily["rolling_variance"])
+
+    daily["sigma_coef"] = np.sqrt(
+        (daily["timestamp_next"] - daily["timestamp"]) / 1e6 / 3600 / 24 / 365
+    )  # *np.random.normal(0.0, 1.0, size=len(res))
+    daily = daily[~daily["alpha"].isna()]
+
+    lr = LinearRegression()
+    X = daily[["k_coef", "sigma_coef"]].values
+    y = daily["alpha"].values
+    lr.fit(X, y)
+
+    kappa = lr.coef_[0]
+    return kappa
 
 
 def get_tick(df: pd.DataFrame, timestamp: int = None):
@@ -1363,11 +1412,11 @@ def calibrate_heston(
             heston_params = params
             for i in range(len(heston_params) // 5):
                 a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
-                a = np.clip(a, eps, 200.0)
-                b = np.clip(b, eps, 50.0)
-                c = np.clip(c, eps, 100.0)
+                a = np.clip(a, eps, 500.0)
+                b = np.clip(b, eps, 30.0)
+                c = np.clip(c, eps, 150.0)
                 rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
-                v0 = np.clip(v0, eps, 5.0)
+                v0 = np.clip(v0, eps, 10.0)
                 heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
             return heston_params
 
@@ -1391,7 +1440,9 @@ def calibrate_heston(
             heston_params = np.concatenate([heston_params[0:1], heston_params[2:-1]])
 
         elif calibration_type == "nu0_and_k":
-            heston_params = np.concatenate([np.array([kappa]), heston_params, np.array([nu0])])
+            heston_params = np.concatenate(
+                [np.array([kappa]), heston_params, np.array([nu0])]
+            )
             heston_params = clip_all(heston_params)[1:-1]
 
         return heston_params
@@ -1438,7 +1489,7 @@ def calibrate_heston(
 
             J_tmp = JacHes(model_parameters=model_parameters, market_parameters=market)
             J = np.concatenate([J_tmp[0:1], J_tmp[2:-1]])
-        
+
         elif calibration_type == "nu0_and_k":
             model_parameters = ModelParameters(
                 kappa,
@@ -1447,7 +1498,9 @@ def calibrate_heston(
                 heston_params[2],
                 nu0,
             )
-            J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:-1]
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)[
+                1:-1
+            ]
 
         # count prices for each option
         C = fHes(
@@ -1493,14 +1546,15 @@ def calibrate_heston(
                 np.array([nu0]),
             ]
         )
-    
+
     elif calibration_type == "nu0_and_k":
         nu0 = get_nu0(tick)
-        # kappa = get_kappa()
-        kappa = 12.9
+        kappa = get_kappa(df=df, timestamp=timestamp)
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[1:-1])
         calibrated_params = np.array(res["x"], dtype=np.float64)
-        calibrated_params = np.concatenate([np.array([kappa]), calibrated_params, np.array([nu0])])
+        calibrated_params = np.concatenate(
+            [np.array([kappa]), calibrated_params, np.array([nu0])]
+        )
 
     error = res["objective"][-1]
 
@@ -1542,17 +1596,18 @@ def calibrate_heston(
             error=0.001,
         )
         calibrated_ivs.append(calibrated_iv)
-    tick["market_iv"] = market_ivs 
-    tick["market_iv"] = tick["market_iv"]*100
+    tick["market_iv"] = market_ivs
+    tick["market_iv"] = tick["market_iv"] * 100
 
     tick["calibrated_iv"] = calibrated_ivs
-    tick["calibrated_iv"] = tick["calibrated_iv"]*100
+    tick["calibrated_iv"] = tick["calibrated_iv"] * 100
 
     result = tick[
         [
             "type",
             "strike_price",
             "expiration",
+            "underlying_price",
             "mark_price_usd",
             "calibrated_mark_price_usd",
             "market_iv",
