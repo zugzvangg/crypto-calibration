@@ -1380,7 +1380,7 @@ def calibrate_heston(
         error (float): Value of error on calibration.
     """
 
-    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar", "nu0_and_k"]
+    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar", "nu0_and_k", "kappa"]
     if calibration_type not in available_calibration_types:
         raise ValueError(
             f"calibration_type should be from {available_calibration_types}"
@@ -1413,7 +1413,7 @@ def calibrate_heston(
             for i in range(len(heston_params) // 5):
                 a, b, c, rho, v0 = heston_params[i * 5 : i * 5 + 5]
                 a = np.clip(a, eps, 500.0)
-                b = np.clip(b, eps, 30.0)
+                b = np.clip(b, eps, 500.0)
                 c = np.clip(c, eps, 150.0)
                 rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
                 v0 = np.clip(v0, eps, 10.0)
@@ -1444,6 +1444,10 @@ def calibrate_heston(
                 [np.array([kappa]), heston_params, np.array([nu0])]
             )
             heston_params = clip_all(heston_params)[1:-1]
+
+        elif calibration_type == "kappa":
+            heston_params = np.concatenate([np.array([kappa]), heston_params])
+            heston_params = clip_all(heston_params)[1:]
 
         return heston_params
 
@@ -1502,6 +1506,16 @@ def calibrate_heston(
                 1:-1
             ]
 
+        elif calibration_type == "kappa":
+            model_parameters = ModelParameters(
+                kappa,
+                heston_params[0],
+                heston_params[1],
+                heston_params[2],
+                heston_params[3],
+            )
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:]
+
         # count prices for each option
         C = fHes(
             model_parameters=model_parameters,
@@ -1555,6 +1569,12 @@ def calibrate_heston(
         calibrated_params = np.concatenate(
             [np.array([kappa]), calibrated_params, np.array([nu0])]
         )
+
+    elif calibration_type == "kappa":
+        kappa = get_kappa(df=df, timestamp=timestamp)
+        res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[1:])
+        calibrated_params = np.array(res["x"], dtype=np.float64)
+        calibrated_params = np.concatenate([np.array([kappa]), calibrated_params])
 
     error = res["objective"][-1]
 
