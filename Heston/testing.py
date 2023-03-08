@@ -100,8 +100,7 @@ r_val = np.float64(0.02)
 C = np.ones(len(tarr), dtype=np.float64)
 
 types = np.ones(len(tarr), dtype=bool)
-market = MarketParameters(K=karr, T=tarr, S=S_val, 
-r=r_val, types=types, C = C)
+market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, types=types, C=C)
 
 a = np.float64(3.0)  # kappa                           |  mean reversion rate
 b = np.float64(0.10)  # v_infinity                      |  long term variance
@@ -122,7 +121,7 @@ print(x)
 
 # HesIntJac demo
 # res = HesIntJac(
-#     model_parameters=model, 
+#     model_parameters=model,
 #     market_parameters=market,
 #     market_pointer=np.int32(0))
 # print(res.pa1s)
@@ -135,8 +134,3 @@ print(x)
 # )
 # print(hes)
 # print(122)
-
-
-
-
-

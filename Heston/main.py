@@ -100,7 +100,7 @@ tarr = np.array(
 S_val = np.float64(1.0)
 r_val = np.float64(0.02)
 
-market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, C = carr)
+market = MarketParameters(K=karr, T=tarr, S=S_val, r=r_val, C=carr)
 
 a = np.float64(3.0)  # kappa                           |  mean reversion rate
 b = np.float64(0.10)  # v_infinity                      |  long term variance
@@ -111,15 +111,14 @@ rho = np.float64(
 v0 = np.float64(0.08)
 
 
-
-def proj_heston( heston_params : np.ndarray )->np.ndarray:
+def proj_heston(heston_params: np.ndarray) -> np.ndarray:
     """
-        This funciton project heston parameters into valid range
-        Attributes:
-            heston_params(np.ndarray): model parameters
-        
-        Returns:
-            heston_params(np.ndarray): clipped parameters
+    This funciton project heston parameters into valid range
+    Attributes:
+        heston_params(np.ndarray): model parameters
+
+    Returns:
+        heston_params(np.ndarray): clipped parameters
     """
     eps = 1e-4
     for i in range(len(heston_params) // 5):
@@ -132,49 +131,46 @@ def proj_heston( heston_params : np.ndarray )->np.ndarray:
         heston_params[i * 5 : i * 5 + 5] = a, b, c, rho, v0
     return heston_params
 
-def get_residuals( heston_params:np.ndarray ) -> Tuple[ np.ndarray, np.ndarray ]:
-    '''
-        This function calculates residuals and Jacobian matrix
-        Args:
-            heston_params(np.ndarray): model params
-        Returns:
-            res(np.ndarray) : vector or residuals
-            J(np.ndarray)   : Jacobian
-    '''
+
+def get_residuals(heston_params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    This function calculates residuals and Jacobian matrix
+    Args:
+        heston_params(np.ndarray): model params
+    Returns:
+        res(np.ndarray) : vector or residuals
+        J(np.ndarray)   : Jacobian
+    """
     # needed format to go
     model_parameters = ModelParameters(
-            heston_params[0],
-            heston_params[1],
-            heston_params[2],
-            heston_params[3],
-            heston_params[4])
+        heston_params[0],
+        heston_params[1],
+        heston_params[2],
+        heston_params[3],
+        heston_params[4],
+    )
     # тут ок в целом, надо подогнать дальше и смотреть
     #  чтоб ваще те параметры подставлялись в якобиан
     C = fHes(
-    model_parameters=model_parameters,
-    market_parameters=market,
+        model_parameters=model_parameters,
+        market_parameters=market,
     )
 
-    J = JacHes(
-    model_parameters=model_parameters, 
-    market_parameters=market)
+    J = JacHes(model_parameters=model_parameters, market_parameters=market)
 
     K = karr
-    F = np.ones(len(K))*market.S
+    F = np.ones(len(K)) * market.S
     weights = np.ones_like(K)
     weights = weights / np.sum(weights)
     typ = True
-    P = C + np.exp(-market.r * market.T) * ( K - F )
+    P = C + np.exp(-market.r * market.T) * (K - F)
     X_ = C
     X_[~typ] = P[~typ]
     res = X_ - market.C
-    return res * weights,  J @ np.diag(weights)
-
+    return res * weights, J @ np.diag(weights)
 
 
 start_params = ModelParameters(a=1.2, b=0.2, c=0.3, rho=-0.6, v0=0.2)
 start_params = np.array([a, b, c, rho, v0])
 res = Levenberg_Marquardt(100, get_residuals, proj_heston, start_params)
 print(res["x"])
-
-
