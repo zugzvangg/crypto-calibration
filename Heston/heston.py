@@ -1440,7 +1440,8 @@ def get_nu0(df: pd.DataFrame):
 
 def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
     if timestamp:
-        data = df.query(f"timestamp<={timestamp}").copy()
+        data = df[df["timestamp"] <= timestamp].copy()
+        # data = df.query(f"timestamp<={timestamp}").copy()
     else:
         data = df.copy()
     forward = (
@@ -1475,9 +1476,10 @@ def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
     return alpha_bar
 
 
-def get_kappa(df, timestamp):
+def get_kappa(df: pd.DataFrame, timestamp: int = None):
     if timestamp:
-        data = df.query(f"timestamp<={timestamp}").copy()
+        data = df[df["timestamp"] <= timestamp].copy()
+        # data = df.query(f"timestamp<={timestamp}").copy()
     else:
         data = df.copy()
 
@@ -1828,8 +1830,8 @@ def calibrate_heston(
     tick["calibrated_iv"] = calibrated_ivs
     tick["calibrated_iv"] = tick["calibrated_iv"] * 100
     # gettind approximate bid and ask iv-s
-    tick["ask_iv"] = tick["market_iv"]*(tick["strike_price"].apply(get_bid_ask))
-    tick["bid_iv"] = tick["market_iv"]*(2 - tick["strike_price"].apply(get_bid_ask))
+    tick["ask_iv"] = tick["market_iv"] * (tick["strike_price"].apply(get_bid_ask))
+    tick["bid_iv"] = tick["market_iv"] * (2 - tick["strike_price"].apply(get_bid_ask))
 
     result = tick[
         [
