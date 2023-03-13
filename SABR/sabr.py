@@ -264,8 +264,26 @@ def calibrate_sabr(
             f"calibration_type should be from {available_calibration_types}"
         )
     tick = get_tick(df=df, timestamp=timestamp)
+    iv = []
+    # count ivs
+    for index, t in tick.iterrows():
+        market_iv = get_implied_volatility(
+            option_type=t["type"],
+            C=t["mark_price_usd"],
+            K=t["strike_price"],
+            T=t["tau"],
+            F=t["underlying_price"],
+            r=0.0,
+            error=0.001,
+        )
+        iv.append(market_iv)
+
+    # drop if iv is None
+    tick["iv"] = iv
+    tick = tick[~tick["iv"].isin([None, np.nan])]
     karr = tick.strike_price.to_numpy(dtype=np.float64)
     carr = tick.mark_price_usd.to_numpy(dtype=np.float64)
+    iv = tick.iv.to_numpy(dtype=np.float64)
     T = np.float64(tick.tau.mean())
     types = np.where(tick["type"] == "call", True, False)
     # take it zero as on deribit
@@ -273,7 +291,7 @@ def calibrate_sabr(
     # tick dataframes may have not similar timestamps -->
     # not equal value if underlying --> take mean
     S_val = np.float64(tick.underlying_price.mean())
-    market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types)
+    market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv = iv)
 
     def clip_params(sabr_params: np.ndarray) -> np.ndarray:
         """
@@ -286,34 +304,27 @@ def calibrate_sabr(
         eps = 1e-4
 
         def clip_all(params):
-            sabr_params = params
-            for i in range(len(sabr_params) // 4):
-                (
-                    alpha,
-                    v,
-                    beta,
-                    rho,
-                ) = sabr_params[i * 4 : i * 4 + 4]
-                alpha = np.clip(alpha, eps, 50.0)
-                v = np.clip(v, eps, 100.0)
-                beta = np.clip(beta, eps, 1.0 - eps)
-                rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
-                sabr_params[i * 4 : i * 4 + 4] = alpha, v, beta, rho
+            alpha, v, beta, rho = params
+            alpha = np.clip(alpha, eps, 50.0)
+            v = np.clip(v, eps, 100.0)
+            beta = np.clip(beta, eps, 1.0 - eps)
+            rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
+            sabr_params = np.array([alpha, v, beta, rho])
             return sabr_params
 
         if calibration_type == "all":
             sabr_params = clip_all(sabr_params)
 
         elif calibration_type == "beta":
-            sabr_params = np.concatenate(
+            params = np.concatenate(
                 [
-                    sabr_params[0:1],
+                    sabr_params[0:2],
                     np.array([beta]),
-                    sabr_params[1:],
+                    sabr_params[2:],
                 ]
             )
-            sabr_params = clip_all(sabr_params)
-            sabr_params = np.concatenate([sabr_params[0:1], sabr_params[2:]])
+            sabr_params = clip_all(params)
+            sabr_params = np.concatenate([sabr_params[0:2], sabr_params[3:]])
 
         return sabr_params
 
@@ -339,10 +350,10 @@ def calibrate_sabr(
 
         elif calibration_type == "beta":
             model_parameters = ModelParameters(
-                sabr_params[0], beta, sabr_params[1], sabr_params[2]
+                sabr_params[0], sabr_params[1], beta, sabr_params[2]
             )
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
-            J = np.concatenate([J_tmp[0:1], J_tmp[2:]])
+            J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
         iv = vol_sabr(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
@@ -355,16 +366,16 @@ def calibrate_sabr(
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
     elif calibration_type == "beta":
-        beta = 1.0
+        beta = 0.9999
         res = LevenbergMarquardt(
             200,
             get_residuals,
             clip_params,
-            np.concatenate([start_params[0:1], start_params[2:]]),
+            np.concatenate([start_params[0:2], start_params[3:]]),
         )
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate(
-            [calibrated_params[0:1], np.array([beta]), calibrated_params[2:1]]
+            [calibrated_params[0:2], np.array([beta]), calibrated_params[2:]]
         )
     error = res["objective"][-1]
     final_params = ModelParameters(
@@ -381,8 +392,10 @@ def calibrate_sabr(
             "strike_price",
             "expiration",
             "underlying_price",
-            "market_iv",
+            "iv",
             "calibrated_iv",
         ]
     ]
+    result["iv"] = 100*result["iv"]
+    result["calibrated_iv"] = 100*result["calibrated_iv"]
     return calibrated_params, error, result
