@@ -362,13 +362,13 @@ def calibrate_sabr(
         return res * weights, J @ np.diag(weights)
 
     if calibration_type == "all":
-        res = LevenbergMarquardt(200, get_residuals, clip_params, start_params)
+        res = LevenbergMarquardt(500, get_residuals, clip_params, start_params)
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
     elif calibration_type == "beta":
         beta = 0.9999
         res = LevenbergMarquardt(
-            200,
+            500,
             get_residuals,
             clip_params,
             np.concatenate([start_params[0:2], start_params[3:]]),
