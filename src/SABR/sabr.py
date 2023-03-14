@@ -1,9 +1,9 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from utils import get_tick
+from src.utils import get_tick, get_implied_volatility
 from typing import Final, Tuple
-from levenberg_marquardt import LevenbergMarquardt
+from src.levenberg_marquardt import LevenbergMarquardt
 from scipy import stats as sps
 
 
@@ -68,49 +68,6 @@ class ModelParameters(object):
         self.v = v
         self.beta = beta
         self.rho = rho
-
-
-# Newton-Raphsen
-def get_implied_volatility(
-    option_type: str,
-    C: float,
-    K: float,
-    T: float,
-    F: float,
-    r: float = 0.0,
-    error: float = 0.001,
-) -> float:
-    """
-    Function to count implied volatility via given params of option, using Newton-Raphson method :
-
-    Args:
-        C (float): Option market price(USD).
-        K (float): Strike(USD).
-        T (float): Time to expiration in years.
-        F (float): Underlying price.
-        r (float): Risk-free rate.
-        error (float): Given threshhold of error.
-
-    Returns:
-        float: Implied volatility in percent.
-    """
-    vol = 1.0
-    dv = error + 1
-    while abs(dv) > error:
-        d1 = (np.log(F / K) + 0.5 * vol**2 * T) / (vol * np.sqrt(T))
-        d2 = d1 - vol * np.sqrt(T)
-        D = np.exp(-r * T)
-        if option_type.lower() == "call":
-            price = F * sps.norm.cdf(d1) - K * sps.norm.cdf(d2) * D
-        elif option_type.lower() == "put":
-            price = -F * sps.norm.cdf(-d1) + K * sps.norm.cdf(-d2) * D
-        else:
-            raise ValueError("Wrong option type, must be 'call' or 'put' ")
-        Vega = F * np.sqrt(T / np.pi / 2) * np.exp(-0.5 * d1**2)
-        PriceError = price - C
-        dv = PriceError / Vega
-        vol = vol - dv
-    return vol
 
 
 _tmp_values_vol_sabr = {

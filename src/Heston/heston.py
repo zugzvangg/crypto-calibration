@@ -2,7 +2,8 @@ import numba as nb
 import numpy as np
 from typing import Final, Tuple
 import pandas as pd
-from levenberg_marquardt import LevenbergMarquardt
+from src.utils import get_tick, get_implied_volatility
+from src.levenberg_marquardt import LevenbergMarquardt
 from typing import Union
 from sklearn.linear_model import LinearRegression
 from scipy import stats as sps
@@ -1351,47 +1352,7 @@ def get_bid_ask(strike):
     return bid_ask_approx[strike]
 
 
-# Newton-Raphsen
-def get_implied_volatility(
-    option_type: str,
-    C: float,
-    K: float,
-    T: float,
-    F: float,
-    r: float = 0.0,
-    error: float = 0.001,
-) -> float:
-    """
-    Function to count implied volatility via given params of option, using Newton-Raphson method :
 
-    Args:
-        C (float): Option market price(USD).
-        K (float): Strike(USD).
-        T (float): Time to expiration in years.
-        F (float): Underlying price.
-        r (float): Risk-free rate.
-        error (float): Given threshhold of error.
-
-    Returns:
-        float: Implied volatility in percent.
-    """
-    vol = 1.0
-    dv = error + 1
-    while abs(dv) > error:
-        d1 = (np.log(F / K) + 0.5 * vol**2 * T) / (vol * np.sqrt(T))
-        d2 = d1 - vol * np.sqrt(T)
-        D = np.exp(-r * T)
-        if option_type.lower() == "call":
-            price = F * sps.norm.cdf(d1) - K * sps.norm.cdf(d2) * D
-        elif option_type.lower() == "put":
-            price = -F * sps.norm.cdf(-d1) + K * sps.norm.cdf(-d2) * D
-        else:
-            raise ValueError("Wrong option type, must be 'call' or 'put' ")
-        Vega = F * np.sqrt(T / np.pi / 2) * np.exp(-0.5 * d1**2)
-        PriceError = price - C
-        dv = PriceError / Vega
-        vol = vol - dv
-    return vol
 
 
 def get_nu0(df: pd.DataFrame):
@@ -1520,45 +1481,6 @@ def get_kappa(df: pd.DataFrame, timestamp: int = None):
 
     kappa = lr.coef_[0]
     return kappa
-
-
-def get_tick(df: pd.DataFrame, timestamp: int = None):
-    """Function gets tick for each expiration and strike
-    from closest timestamp from given. If timestamp is None, it takes last one."""
-    if timestamp:
-        data = df[df["timestamp"] <= timestamp].copy()
-        # only not expired on curret tick
-        data = data[data["expiration"] > timestamp].copy()
-    else:
-        data = df.copy()
-        # only not expired on max available tick
-        data = data[data["expiration"] > data["timestamp"].max()].copy()
-    # tau is time before expiration in years
-    data["tau"] = (data.expiration - data.timestamp) / 1e6 / 3600 / 24 / 365
-
-    data_grouped = data.loc[
-        data.groupby(["type", "expiration", "strike_price"])["timestamp"].idxmax()
-    ]
-
-    data_grouped = data_grouped[data_grouped["tau"] > 0.0]
-    # We need Only out of the money to calibrate
-    data_grouped = data_grouped[
-        (
-            (data_grouped["type"] == "call")
-            & (data_grouped["underlying_price"] <= data_grouped["strike_price"])
-        )
-        | (
-            (data_grouped["type"] == "put")
-            & (data_grouped["underlying_price"] >= data_grouped["strike_price"])
-        )
-    ]
-    data_grouped["mark_price_usd"] = (
-        data_grouped["mark_price"] * data_grouped["underlying_price"]
-    )
-    data_grouped = data_grouped[data_grouped["strike_price"] <= 10_000]
-    # print(data_grouped)
-    return data_grouped
-
 
 def calibrate_heston(
     df: pd.DataFrame,

@@ -2,7 +2,7 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from sabr import ModelParameters, MarketParameters, vol_sabr, jacobian_sabr
+from src.SABR.sabr import ModelParameters, MarketParameters, vol_sabr, jacobian_sabr
 
 karr = np.array(
     [
@@ -49,7 +49,7 @@ karr = np.array(
     ],
     dtype=np.float64,
 )
-
+iv = karr
 types = np.ones(len(karr), dtype=bool)
 T = np.float64(0.5)
 carr = karr
@@ -63,7 +63,7 @@ beta = np.float64(0.5)
 rho = np.float64(0.01)
 
 model = ModelParameters(alpha, v, beta, rho)
-market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types)
+market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv = iv)
 
 if __name__ == "__main__":
 # print(vol_sabr(model=model, market=market))
