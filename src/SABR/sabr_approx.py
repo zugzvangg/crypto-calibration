@@ -89,38 +89,41 @@ def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
 ) -> np.array:
-    f, K, T = market.S, market.K, market.T
+    f, Ks, T = market.S, market.K, market.T
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
-    x = np.log(f / K)
+    sigmas = []
+    for K in Ks:
+        x = np.log(f / K)
 
-    I_H_1 = (
-        alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
-        + alpha * beta * rho * v * (K * f) ** (beta / 2 + -1 / 2) / 4
-        + v**2 * (2 - 3 * rho**2) / 24
-    )
-
-    if x == 0.0:
-        I_B_0 = K ** (beta - 1) * alpha
-        sigma = I_B_0 + I_B_0 * I_H_1 * T
-        return sigma
-
-    elif v == 0.0:
-        I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + f ** (1 - beta))
-        sigma = I_B_0 + I_B_0 * I_H_1 * T
-        return sigma
-
-    else:
-        if beta == 1.0:
-            z = v * x / alpha
-
-        elif beta < 1.0:
-            z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
-
-        I_B_0 = (
-            v * x / (np.log((np.sqrt(1 - 2 * rho * z + z**2) + z - rho) / (1 - rho)))
+        I_H_1 = (
+            alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
+            + alpha * beta * rho * v * (K * f) ** (beta / 2 + - 1/2) / 4
+            + v**2 * (2 - 3 * rho**2) / 24
         )
-        sigma = I_B_0 + I_B_0 * I_H_1 * T
-        return sigma
+
+        if x == 0.0:
+            I_B_0 = K ** (beta - 1) * alpha
+            sigma = I_B_0 *(1 + I_H_1 * T)
+
+        elif v == 0.0:
+            I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + f ** (1 - beta))
+            sigma = I_B_0 *(1 + I_H_1 * T)
+
+        else:
+            if beta == 1.0:
+                z = v * x / alpha
+
+            elif beta < 1.0:
+                z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
+
+            I_B_0 = (
+                v * x / (np.log((np.sqrt(1 - 2 * rho * z + z**2) + z - rho) / (1 - rho)))
+            )
+            sigma = I_B_0 *(1 + I_H_1 * T) 
+
+
+        sigmas.append(sigma)
+    return np.array(sigmas)
 
 
 _tmp_values_jacobian_sabr = {}
@@ -130,127 +133,136 @@ def jacobian_sabr(
     model: ModelParameters,
     market: MarketParameters,
 ):
-    f, K, T = market.S, market.K, market.T
+    f, Ks, T = market.S, market.K, market.T
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
-    x = np.log(f / K)
-    I_H = (
-        alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
-        + alpha * beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
-        + v**2 * (2 - 3 * rho**2) / 24
-    )
-    dI_H_alpha = (
-        alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 12
-        + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
-    )
-    dI_H_beta = (
-        alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 * np.log(K * f) / 24
-        + alpha**2 * (K * f) ** (beta - 1) * (2 * beta - 2) / 24
-        + alpha * beta * rho * v * (K * f) ** (beta / 2 + -1 / 2) * np.log(K * f) / 8
-        + alpha * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
-    )
-    dI_h_v = (
-        alpha * beta * rho * (K * f) ** (beta / 2 + -1 / 2) / 4
-        + v * (2 - 3 * rho**2) / 12
-    )
-    dI_H_rho = alpha * beta * v * (K * f) ** (beta / 2 + -1 / 2) / 4 - rho * v**2 / 4
+    ddalphas, ddbeta, ddv, ddrho = [], [], [], []
+    # need a cycle cause may be different formula for different strikes
+    for K in Ks:
+        x = np.log(f / K)
+        I_H = (
+            alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
+            + alpha * beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+            + v**2 * (2 - 3 * rho**2) / 24
+        )
+        dI_H_alpha = (
+            alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 12
+            + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+        )
+        dI_H_beta = (
+            alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 * np.log(K * f) / 24
+            + alpha**2 * (K * f) ** (beta - 1) * (2 * beta - 2) / 24
+            + alpha * beta * rho * v * (K * f) ** (beta / 2 + -1 / 2) * np.log(K * f) / 8
+            + alpha * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+        )
+        dI_h_v = (
+            alpha * beta * rho * (K * f) ** (beta / 2 + -1 / 2) / 4
+            + v * (2 - 3 * rho**2) / 12
+        )
+        dI_H_rho = alpha * beta * v * (K * f) ** (beta / 2 + -1 / 2) / 4 - rho * v**2 / 4
 
-    if x == 0.0:
-        I_B = alpha * K ** (beta - 1)
-        B_alpha = K ** (beta - 1)
-        B_beta = K ** (beta - 1) * alpha * np.log(K)
-        B_v = 0.0
-        B_rho = 0.0
+        if x == 0.0:
+            I_B = alpha * K ** (beta - 1)
+            B_alpha = K ** (beta - 1)
+            B_beta = K ** (beta - 1) * alpha * np.log(K)
+            B_v = 0.0
+            B_rho = 0.0
 
-    elif v == 0.0:
-        I_B = alpha * (1 - beta) * x / (f ** (1 - beta) - (K ** (1 - beta)))
-        B_alpha = (beta - 1) * x / (K ** (1 - beta) - f ** (1 - beta))
-        B_beta = (
-            alpha
-            * (
-                K ** (1 - beta)
-                - f ** (1 - beta)
-                + (beta - 1)
-                * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
+        elif v == 0.0:
+            I_B = alpha * (1 - beta) * x / (f ** (1 - beta) - (K ** (1 - beta)))
+            B_alpha = (beta - 1) * x / (K ** (1 - beta) - f ** (1 - beta))
+            B_beta = (
+                alpha
+                * (
+                    K ** (1 - beta)
+                    - f ** (1 - beta)
+                    + (beta - 1)
+                    * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
+                )
+                * x
+                / (K ** (1 - beta) - f ** (1 - beta)) ** 2
             )
-            * x
-            / (K ** (1 - beta) - f ** (1 - beta)) ** 2
-        )
-        B_v = 0.0
-        B_rho = 0.0
+            B_v = 0.0
+            B_rho = 0.0
 
-    elif beta == 1.0:
-        z = v * x / alpha
-        sqrt = np.sqrt(1 - 2 * rho * z + z**2)
-        I_B = v * x / (np.log((sqrt + z - rho) / (1 - rho)))
-        B_alpha = v * x * z / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
-        B_beta = 0.0
-        B_v = (
-            x
-            * (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) - v * x)
-            / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
-        )
-        B_rho = (
-            v
-            * x
-            * ((rho - 1) * (z + sqrt) + (-rho + z + sqrt) * sqrt)
-            / (
-                (rho - 1)
-                * (-rho + z + sqrt)
-                * sqrt
-                * np.log((rho - z - sqrt) / (rho - 1)) ** 2
+        elif beta == 1.0:
+            z = v * x / alpha
+            sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+            I_B = v * x / (np.log((sqrt + z - rho) / (1 - rho)))
+            B_alpha = v * x * z / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
+            B_beta = 0.0
+            B_v = (
+                x
+                * (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) - v * x)
+                / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
             )
-        )
+            B_rho = (
+                v
+                * x
+                * ((rho - 1) * (z + sqrt) + (-rho + z + sqrt) * sqrt)
+                / (
+                    (rho - 1)
+                    * (-rho + z + sqrt)
+                    * sqrt
+                    * np.log((rho - z - sqrt) / (rho - 1)) ** 2
+                )
+            )
 
-    elif beta < 1.0:
-        I_B = v * (-(K ** (1 - beta)) + f ** (1 - beta)) / (alpha * (1 - beta))
-        B_alpha = v * x * z / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
-        B_beta = (
-            -v
-            * x
-            * (
-                z / (1 - beta)
-                + (
-                    -rho * z / (1 - beta)
-                    + z**2 / (1 - beta)
-                    - rho
-                    * v
+        elif beta < 1.0:
+            z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
+            sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+            I_B = v * (-(K ** (1 - beta)) + f ** (1 - beta)) / (alpha * (1 - beta))
+            B_alpha = v * x * z / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
+            B_beta = (
+                -v
+                * x
+                * (
+                    z / (1 - beta)
+                    + (
+                        -rho * z / (1 - beta)
+                        + z**2 / (1 - beta)
+                        - rho
+                        * v
+                        * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
+                        / (alpha * (1 - beta))
+                        + v
+                        * z
+                        * (
+                            2 * K ** (1 - beta) * np.log(K)
+                            - 2 * f ** (1 - beta) * np.log(f)
+                        )
+                        / (2 * alpha * (1 - beta))
+                    )
+                    / sqrt
+                    + v
                     * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
                     / (alpha * (1 - beta))
-                    + v
-                    * z
-                    * (
-                        2 * K ** (1 - beta) * np.log(K)
-                        - 2 * f ** (1 - beta) * np.log(f)
-                    )
-                    / (2 * alpha * (1 - beta))
                 )
-                / sqrt
-                + v
-                * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
-                / (alpha * (1 - beta))
+                / ((-rho + z + sqrt) * np.log((-rho + z + sqrt) / (1 - rho)) ** 2)
             )
-            / ((-rho + z + sqrt) * np.log((-rho + z + sqrt) / (1 - rho)) ** 2)
-        )
-        B_v = -v * x * ((-rho * z / v + z**2 / v) / sqrt + z / v) / (
-            (-rho + z + sqrt) * np.log((-rho + z + sqrt) / (1 - rho)) ** 2
-        ) + x / np.log((-rho + z + sqrt) / (1 - rho))
+            B_v = -v * x * ((-rho * z / v + z**2 / v) / sqrt + z / v) / (
+                (-rho + z + sqrt) * np.log((-rho + z + sqrt) / (1 - rho)) ** 2
+            ) + x / np.log((-rho + z + sqrt) / (1 - rho))
 
-        B_rho = (
-            -v
-            * x
-            * (1 - rho)
-            * ((-z / sqrt - 1) / (1 - rho) + (-rho + z + sqrt) / (1 - rho) ** 2)
-            / ((-rho + z + sqrt) * np.log((-rho + z + sqrt) / (1 - rho)) ** 2)
-        )
+            B_rho = (
+                -v
+                * x
+                * (1 - rho)
+                * ((-z / sqrt - 1) / (1 - rho) + (-rho + z + sqrt) / (1 - rho) ** 2)
+                / ((-rho + z + sqrt) * np.log((-rho + z + sqrt) / (1 - rho)) ** 2)
+            )
 
-    sig_alpha = B_alpha*(1 + I_H*T) + dI_H_alpha*I_B*T
-    sig_beta = B_beta*(1 + I_H*T) + dI_H_beta*I_B*T
-    sig_v = B_v*(1 + I_H*T) + dI_h_v*I_B*T
-    sig_rho = B_rho*(1 + I_H*T) + dI_H_rho*I_B*T
+        sig_alpha = B_alpha*(1 + I_H*T) + dI_H_alpha*I_B*T
+        sig_beta = B_beta*(1 + I_H*T) + dI_H_beta*I_B*T
+        sig_v = B_v*(1 + I_H*T) + dI_h_v*I_B*T
+        sig_rho = B_rho*(1 + I_H*T) + dI_H_rho*I_B*T
 
-    # C, vega = black_scholes_vega(K, F, T, r, sig)
-    # return C, vega, sig, sig_alpha, sig_v, sig_beta, sig_rho
-    return sig_alpha, sig_beta, sig_v, sig_rho
+        ddalphas.append(sig_alpha)
+        ddbeta.append(sig_beta)
+        ddv.append(sig_v)
+        ddrho.append(sig_rho)
+        # C, vega = black_scholes_vega(K, F, T, r, sig)
+        # return C, vega, sig, sig_alpha, sig_v, sig_beta, sig_rho
+    return np.array(ddalphas),  np.array(ddv), np.array(ddbeta), np.array(ddrho)
 
 
 def calibrate_sabr(
