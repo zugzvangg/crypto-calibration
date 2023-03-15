@@ -341,7 +341,8 @@ def calibrate_sabr(
             alpha, v, beta, rho = params
             alpha = np.clip(alpha, eps, 50.0)
             v = np.clip(v, eps, 100.0)
-            beta = np.clip(beta, eps, 1.0 - eps)
+            # no need there cause by approx formula it can be 1.0
+            beta = np.clip(beta, eps, 1.0)
             rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
             sabr_params = np.array([alpha, v, beta, rho])
             return sabr_params
@@ -400,7 +401,8 @@ def calibrate_sabr(
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
     elif calibration_type == "beta":
-        beta = 0.9999
+        # beta = 0.9999
+        beta = 1.0
         res = LevenbergMarquardt(
             500,
             get_residuals,
