@@ -301,8 +301,6 @@ def jacobian_sabr(
         ddbeta[index] = sig_beta
         ddv[index] = sig_v
         ddrho[index] = sig_rho
-        # C, vega = black_scholes_vega(K, F, T, r, sig)
-        # return C, vega, sig, sig_alpha, sig_v, sig_beta, sig_rho
     return ddalpha, ddv, ddbeta, ddrho
 
 
