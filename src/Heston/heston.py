@@ -1307,7 +1307,7 @@ def calibrate_heston(
         error (float): Value of error on calibration.
     """
 
-    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar", "nu0_and_k", "kappa"]
+    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar", "nu0_and_k", "kappa", "nu_bar_and_k"]
     if calibration_type not in available_calibration_types:
         raise ValueError(
             f"calibration_type should be from {available_calibration_types}"
@@ -1376,6 +1376,11 @@ def calibrate_heston(
             heston_params = np.concatenate([np.array([kappa]), heston_params])
             heston_params = clip_all(heston_params)[1:]
 
+        elif calibration_type == "nu_bar_and_k":
+            heston_params = np.concatenate([np.array([kappa, nu_bar]), heston_params])
+            heston_params = clip_all(heston_params)[2:]
+
+
         return heston_params
 
     def get_residuals(heston_params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -1442,6 +1447,16 @@ def calibrate_heston(
                 heston_params[3],
             )
             J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:]
+        
+        elif calibration_type == "nu_bar_and_k":
+            model_parameters = ModelParameters(
+                kappa,
+                nu_bar,
+                heston_params[0],
+                heston_params[1],
+                heston_params[2],
+            )
+            J = JacHes(model_parameters=model_parameters, market_parameters=market)[2:]
 
         # count prices for each option
         C = fHes(
@@ -1502,6 +1517,13 @@ def calibrate_heston(
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[1:])
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate([np.array([kappa]), calibrated_params])
+
+    elif calibration_type == "nu_bar_and_k":
+        nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
+        kappa = get_kappa(df=df, timestamp=timestamp)
+        res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[2:])
+        calibrated_params = np.array(res["x"], dtype=np.float64)
+        calibrated_params = np.concatenate([np.array([kappa, nu_bar]), calibrated_params])
 
     error = res["objective"][-1]
 
