@@ -1519,8 +1519,10 @@ def calibrate_heston(
         calibrated_params = np.concatenate([np.array([kappa]), calibrated_params])
 
     elif calibration_type == "nu_bar_and_k":
-        nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
-        kappa = get_kappa(df=df, timestamp=timestamp)
+        # nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
+        # kappa = get_kappa(df=df, timestamp=timestamp)
+        nu_bar = 0.8
+        kappa = 0.5
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[2:])
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate([np.array([kappa, nu_bar]), calibrated_params])
