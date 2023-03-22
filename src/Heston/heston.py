@@ -1146,15 +1146,12 @@ def JacHes(
     return jacs
 
 
-
-
-
-
-
-
-def get_nu0(df: pd.DataFrame):
-    tick = df.copy()
-    # get closrst expiration
+def get_nu0(df: pd.DataFrame, timestamp: int = None):
+    if timestamp:
+        tick = df[df["timestamp"] <= timestamp].copy()
+    else:
+        tick = df.copy()
+    # get closest expiration
     tick = tick[tick["expiration"] == tick["expiration"].min()]
     tick["dist"] = abs(tick["strike_price"] - tick["underlying_price"])
     # get closest call
@@ -1196,7 +1193,7 @@ def get_nu0(df: pd.DataFrame):
     return nu0
 
 
-def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
+def get_nu_bar(df: pd.DataFrame, timestamp: int = None):
     if timestamp:
         data = df[df["timestamp"] <= timestamp].copy()
         # data = df.query(f"timestamp<={timestamp}").copy()
@@ -1234,7 +1231,7 @@ def get_alpha_bar(df: pd.DataFrame, timestamp: int = None):
     return alpha_bar
 
 
-def get_kappa(df: pd.DataFrame, timestamp: int = None):
+def get_kappa(df: pd.DataFrame, timestamp: int = None, nu_bar: float = None):
     if timestamp:
         data = df[df["timestamp"] <= timestamp].copy()
         # data = df.query(f"timestamp<={timestamp}").copy()
@@ -1242,7 +1239,7 @@ def get_kappa(df: pd.DataFrame, timestamp: int = None):
         data = df.copy()
 
     # need it for correct regression
-    alpha_bar_tmp = get_alpha_bar(df=data, timestamp=timestamp)
+    alpha_bar_tmp = nu_bar if nu_bar else get_nu_bar(df=data, timestamp=timestamp)
 
     daily = (
         data[["dt", "timestamp", "underlying_price"]]
@@ -1279,11 +1276,15 @@ def get_kappa(df: pd.DataFrame, timestamp: int = None):
     kappa = lr.coef_[0]
     return kappa
 
+
 def calibrate_heston(
     df: pd.DataFrame,
     start_params: np.array,
     timestamp: int = None,
     calibration_type: str = "all",
+    kappa=None,
+    nu_bar=None,
+    nu0=None,
 ) -> Tuple[np.ndarray, float]:
     """
     Function to calibrate Heston model.
@@ -1300,14 +1301,29 @@ def calibrate_heston(
         @param start_params (np.array): Params to start calibration via LM from
         @param timestamp (int): On which timestamp to calibrate the model.
             Should be in range of df timestamps.
-        @param calibration_type(str): Type of calibration. Should be one of: ["all", "nu0"]
-
+        @param calibration_type(str): Type of calibration. Should be one of: [
+            "all",
+            "nu0",
+            "nu0_and_nu_bar",
+            "nu0_and_k","kappa",
+            "nu_bar_and_k",
+            ]
+        @param kappa: Set to needed value if you don't want to calculate kappa on history
+        @param nu0: Set to needed value if you don't want to calculate nu0 on history
+        @param nu_bar: Set to needed value if you don't want to calculate nu_bar on history
     Return:
         calibrated_params (np.array): Array of optimal params on timestamp tick.
         error (float): Value of error on calibration.
     """
 
-    available_calibration_types = ["all", "nu0", "nu0_and_nu_bar", "nu0_and_k", "kappa", "nu_bar_and_k"]
+    available_calibration_types = [
+        "all",
+        "nu0",
+        "nu0_and_nu_bar",
+        "nu0_and_k",
+        "kappa",
+        "nu_bar_and_k",
+    ]
     if calibration_type not in available_calibration_types:
         raise ValueError(
             f"calibration_type should be from {available_calibration_types}"
@@ -1380,7 +1396,6 @@ def calibrate_heston(
             heston_params = np.concatenate([np.array([kappa, nu_bar]), heston_params])
             heston_params = clip_all(heston_params)[2:]
 
-
         return heston_params
 
     def get_residuals(heston_params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -1447,7 +1462,7 @@ def calibrate_heston(
                 heston_params[3],
             )
             J = JacHes(model_parameters=model_parameters, market_parameters=market)[1:]
-        
+
         elif calibration_type == "nu_bar_and_k":
             model_parameters = ModelParameters(
                 kappa,
@@ -1474,19 +1489,15 @@ def calibrate_heston(
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
     elif calibration_type == "nu0":
-        # finding nu0
-        nu0 = get_nu0(tick)
-        # all params exluding nu0 to LM
+        nu0 = nu0 if nu0 else get_nu0(tick, timestamp)
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[:-1])
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate([calibrated_params, np.array([nu0])])
 
     elif calibration_type == "nu0_and_nu_bar":
-        # finding nu0
-        nu0 = get_nu0(tick)
-        # finding nu0_bar
-        nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
-        # nu_bar = get_alpha_bar(df=df)
+        nu0 = nu0 if nu0 else get_nu0(tick, timestamp)
+        nu_bar = nu_bar if nu_bar else get_nu_bar(df=df, timestamp=timestamp)
+        # nu_bar = get_nu_bar(df=df)
         res = LevenbergMarquardt(
             200,
             get_residuals,
@@ -1504,8 +1515,9 @@ def calibrate_heston(
         )
 
     elif calibration_type == "nu0_and_k":
-        nu0 = get_nu0(tick)
-        kappa = get_kappa(df=df, timestamp=timestamp)
+        nu0 = nu0 if nu0 else get_nu0(tick, timestamp)
+        nu_bar = nu_bar if nu_bar else get_nu_bar(tick, timestamp)
+        kappa = kappa if kappa else get_kappa(df=df, timestamp=timestamp, nu_bar=nu_bar)
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[1:-1])
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate(
@@ -1513,19 +1525,20 @@ def calibrate_heston(
         )
 
     elif calibration_type == "kappa":
-        kappa = get_kappa(df=df, timestamp=timestamp)
+        nu_bar = nu_bar if nu_bar else get_nu_bar(tick, timestamp)
+        kappa = kappa if kappa else get_kappa(df=df, timestamp=timestamp, nu_bar=nu_bar)
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[1:])
         calibrated_params = np.array(res["x"], dtype=np.float64)
         calibrated_params = np.concatenate([np.array([kappa]), calibrated_params])
 
     elif calibration_type == "nu_bar_and_k":
-        # nu_bar = get_alpha_bar(df=df, timestamp=timestamp)
-        # kappa = get_kappa(df=df, timestamp=timestamp)
-        nu_bar = 0.8
-        kappa = 0.5
+        nu_bar = nu_bar if nu_bar else get_nu_bar(df=df, timestamp=timestamp)
+        kappa = kappa if kappa else get_kappa(df=df, timestamp=timestamp, nu_bar=nu_bar)
         res = LevenbergMarquardt(200, get_residuals, clip_params, start_params[2:])
         calibrated_params = np.array(res["x"], dtype=np.float64)
-        calibrated_params = np.concatenate([np.array([kappa, nu_bar]), calibrated_params])
+        calibrated_params = np.concatenate(
+            [np.array([kappa, nu_bar]), calibrated_params]
+        )
 
     error = res["objective"][-1]
 
