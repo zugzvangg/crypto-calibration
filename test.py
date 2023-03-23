@@ -1,8 +1,15 @@
-
 import numba as nb
 import numpy as np
 import pandas as pd
-from src.SABR.sabr import ModelParameters, MarketParameters, vol_sabr, jacobian_sabr
+
+# from src.SABR.sabr import ModelParameters, MarketParameters, vol_sabr, jacobian_sabr
+from src.SABR.sabr_approx import (
+    ModelParameters,
+    MarketParameters,
+    vol_sabr,
+    jacobian_sabr,
+)
+
 
 karr = np.array(
     [
@@ -59,12 +66,16 @@ r_val = np.float64(0.02)
 
 alpha = np.float64(1.0)
 v = np.float64(0.5)
-beta = np.float64(0.5)
+beta = np.float64(0.8)
 rho = np.float64(0.01)
 
 model = ModelParameters(alpha, v, beta, rho)
-market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv = iv)
+market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv=iv)
 
 if __name__ == "__main__":
-# print(vol_sabr(model=model, market=market))
-    print(jacobian_sabr(model=model, market=market))
+    # print(vol_sabr(model=model, market=market))
+    # print(jacobian_sabr(model=model, market=market))
+    print(vol_sabr(model=model, market=market))
+
+
+

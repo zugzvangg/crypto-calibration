@@ -303,12 +303,16 @@ def jacobian_sabr(
         ddrho[index] = sig_rho
     return ddalpha, ddv, ddbeta, ddrho
 
+def get_beta():
+    pass
+
 
 def calibrate_sabr(
     df: pd.DataFrame,
     start_params: np.array,
     timestamp: int = None,
     calibration_type: str = "all",
+    beta: float = None
 ):
     """
     Function to calibrate SABR model.
@@ -326,6 +330,7 @@ def calibrate_sabr(
         @param timestamp (int): On which timestamp to calibrate the model.
             Should be in range of df timestamps.
         @param calibration_type(str): Type of calibration. Should be one of: ["all", "beta"]
+        @param beta(float): Fix it to needed value if you don't want to calibrate it
 
     Return:
         calibrated_params (np.array): Array of optimal params on timestamp tick.
@@ -440,8 +445,7 @@ def calibrate_sabr(
         calibrated_params = np.array(res["x"], dtype=np.float64)
 
     elif calibration_type == "beta":
-        # beta = 0.9999
-        beta = 1.0
+        beta = beta if beta else get_beta(df, timestamp)
         res = LevenbergMarquardt(
             500,
             get_residuals,
