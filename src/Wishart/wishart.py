@@ -7,6 +7,8 @@ from src.levenberg_marquardt import LevenbergMarquardt
 from typing import Union
 import warnings 
 warnings.filterwarnings("ignore")
+from Heston.heston import JacHes
+from Heston.heston import ModelParameters as HestonModelParameters
 
 
 _spec_market_params = [
@@ -20,9 +22,11 @@ _spec_market_params = [
 ]
 
 _spec_model_params = [
+    ("beta", nb.float64), 
     ("SIGMA", nb.types.Array(nb.float64, 2, "A")),
-    ("R", nb.types.Array(nb.float64, 2, "A")),
+    ("M", nb.types.Array(nb.float64, 2, "A")),
     ("Q", nb.types.Array(nb.float64, 2, "A")),
+    ("alpha", nb.float64)
 ]
 
 
@@ -57,19 +61,26 @@ class MarketParameters(object):
 
 @nb.experimental.jitclass(_spec_model_params)
 class WirsherModelParameters(object):
+    beta: nb.float64
     SIGMA: nb.types.Array(nb.float64, 2, "A")
-    R: nb.types.Array(nb.float64, 2, "A")
+    M: nb.types.Array(nb.float64, 2, "A")
     Q: nb.types.Array(nb.float64, 2, "A")
+    alpha: nb.float64
 
     def __init__(
         self,
+        beta: nb.float64,
         SIGMA: nb.types.Array(nb.float64, 2, "A"),
         R: nb.types.Array(nb.float64, 2, "A"),
         Q: nb.types.Array(nb.float64, 2, "A"),
+        alpha: nb.float64
     ):
+        self.beta = beta
         self.SIGMA = SIGMA
         self.R = R
         self.Q = Q
+        self.alpha = alpha
+        self.R = alpha*np.eye(2)
 
 
 _tmp_values_get_iv_wishart = {}
@@ -140,3 +151,28 @@ def get_iv_wishart(market: MarketParameters, model: WirsherModelParameters):
         )
         sigmas[index] = np.sqrt(iv_sqared)
     return sigmas
+
+
+
+def Gamma(model: WirsherModelParameters, market: MarketParameters):
+    # page 5 from orig article
+    tau = market.T
+    SIGMA = model.SIGMA
+    M = model.M
+    L1 = np.exp(tau*M)
+    L2 = np.exp(tau*M.T)
+    return np.dot(L1, np.dot(SIGMA, L2))
+
+def Theta(model: WirsherModelParameters, market: MarketParameters):
+    Q = model.Q
+    M = model.M
+    Q11, Q12, Q21, Q22 = Q[0][0], Q[0][1], Q[1][0], Q[1][1]
+    M11, M12, M21, M22 = M[0][0], M[0][1], M[1][0], M[1][1]
+
+
+
+
+
+def jacobian_wishart(market: MarketParameters, model: WirsherModelParameters):
+    heston_params = HestonModelParameters()
+    JacHes
