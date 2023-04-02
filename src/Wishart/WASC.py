@@ -5,15 +5,15 @@ import pandas as pd
 from src.utils import get_tick, get_implied_volatility, get_bid_ask
 from src.levenberg_marquardt import LevenbergMarquardt
 from typing import Union
-from scipy.integrate import quad
+# from scipy.integrate import quad
 import warnings
 
 warnings.filterwarnings("ignore")
-from ..Heston.heston import (
-    ModelParameters as HestonModelParameters,
-    JacHes,
-    MarketParameters as HestonMarketParameters,
-)
+# from ..Heston.heston import (
+#     ModelParameters as HestonModelParameters,
+#     JacHes,
+#     MarketParameters as HestonMarketParameters,
+# )
 
 
 _spec_market_params = [
@@ -178,16 +178,31 @@ _tmp_values_jacobian_wishart = {
     "dR22": nb.float64[:],
 }
 
+def np_to_class(a: np.array):
+    Q = np.array([[a[0], a[1]] , [a[2], a[3]]])
+    E = np.array([[a[4], a[5]] , [a[6], a[7]]])
+    R = np.array([[a[8], a[9]] , [a[10], a[11]]])
+    return ModelParameters(Q, E, R)
+
 # @nb.njit(locals=_tmp_values_jacobian_wishart)
 def jacobian_wishart(market: MarketParameters, model: ModelParameters):
-    Q = model.Q
-    E = model.E
-    R = model.R
     mf = np.log(market.K/ market.S)
-    Q11, Q12, Q21, Q22 = Q[0][0], Q[0][1], Q[1][0], Q[1][1]
-    E11, E12, E21, E22 = E[0][0], E[0][1], E[1][0], E[1][1]
-    R11, R12, R21, R22 = R[0][0], R[0][1], R[1][0], R[1][1]
-    iv = get_iv_wishart(market=market, model=model)
+
+    # Q = model.Q
+    # E = model.E
+    # R = model.R
+    # Q11, Q12, Q21, Q22 = Q[0][0], Q[0][1], Q[1][0], Q[1][1]
+    # E11, E12, E21, E22 = E[0][0], E[0][1], E[1][0], E[1][1]
+    # R11, R12, R21, R22 = R[0][0], R[0][1], R[1][0], R[1][1]
+    Q11, Q12, Q21, Q22, E11, E12, E21, E22, R11, R12, R21, R22 = (
+        model[0], model[1], model[2], 
+        model[3], model[4], model[5],
+        model[6], model[7], model[8],
+        model[9], model[10], model[11]
+    )
+
+
+    iv = get_iv_wishart(market=market, model=np_to_class(model))
 
     dQ11 = mf*(mf*((E11 + E22)*(2*E11*Q11 + E11*(4*R11*(Q11*R11 + Q21*R12) + R21*(Q12*R11 + Q22*R12)) + E12*Q12 + E12*(2*R11*(Q11*R21 + Q21*R22) + 2*R21*(Q11*R11 + Q21*R12) + R21*(Q12*R21 + Q22*R22)) + E21*Q12 + E21*(R11*(Q11*R21 + Q12*R11 + Q21*R22 + Q22*R12) + R21*(Q11*R11 + Q21*R12)) + E22*R21*(2*Q11*R21 + Q12*R11 + 2*Q21*R22 + Q22*R12)) - 7.5*(E11*R11 + E12*R21)*(E11*(Q11*R11 + Q21*R12) + E12*(Q11*R21 + Q21*R22) + E21*(Q12*R11 + Q22*R12) + E22*(Q12*R21 + Q22*R22))) + 3*(E11 + E22)**2*(E11*R11 + E12*R21))/(3*(E11 + E22)**3)
     dQ12 = mf*(mf*((E11 + E22)*(E11*R11*(Q11*R21 + 2*Q12*R11 + Q21*R22 + 2*Q22*R12) + E12*Q11 + E12*(R11*(Q12*R21 + Q22*R22) + R21*(Q11*R21 + Q12*R11 + Q21*R22 + Q22*R12)) + E21*Q11 + E21*(R11*(Q11*R11 + Q21*R12) + 2*R11*(Q12*R21 + Q22*R22) + 2*R21*(Q12*R11 + Q22*R12)) + 2*E22*Q12 + E22*(R11*(Q11*R21 + Q21*R22) + 4*R21*(Q12*R21 + Q22*R22))) - 7.5*(E21*R11 + E22*R21)*(E11*(Q11*R11 + Q21*R12) + E12*(Q11*R21 + Q21*R22) + E21*(Q12*R11 + Q22*R12) + E22*(Q12*R21 + Q22*R22))) + 3*(E11 + E22)**2*(E21*R11 + E22*R21))/(3*(E11 + E22)**3)
@@ -218,7 +233,7 @@ def calibrate_wasc(
     calibration_type: str = "all",
     beta: float = None,
 ):
-        """
+    """
     Function to calibrate SABR model.
     Attributes:
         @param df (pd.DataFrame): Dataframe with history
@@ -240,6 +255,83 @@ def calibrate_wasc(
         calibrated_params (np.array): Array of optimal params on timestamp tick.
         error (float): Value of error on calibration.
     """
+    tick = get_tick(df=df, timestamp=timestamp)
+    iv = []
+    # count ivs
+    for index, t in tick.iterrows():
+        market_iv = get_implied_volatility(
+            option_type=t["type"],
+            C=t["mark_price_usd"],
+            K=t["strike_price"],
+            T=t["tau"],
+            F=t["underlying_price"],
+            r=0.0,
+            error=0.001,
+        )
+        iv.append(market_iv)
+
+    # drop if iv is None
+    tick["iv"] = iv
+    tick = tick[~tick["iv"].isin([None, np.nan])]
+    karr = tick.strike_price.to_numpy(dtype=np.float64)
+    carr = tick.mark_price_usd.to_numpy(dtype=np.float64)
+    iv = tick.iv.to_numpy(dtype=np.float64)
+    T = np.float64(tick.tau.mean())
+    types = np.where(tick["type"] == "call", True, False)
+    # take it zero as on deribit
+    r_val = np.float64(0.0)
+    # tick dataframes may have not similar timestamps -->
+    # not equal value if underlying --> take mean
+    S_val = np.float64(tick.underlying_price.mean())
+    market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv=iv)
+
+    def clip_params(wasc_params: np.ndarray) -> np.ndarray:
+        """
+        This funciton project WASC matrix parameters into valid range
+        Attributes:
+            wasc_params(np.ndarray): model parameters
+        Returns:
+            wasc_params(np.ndarray): clipped parameters
+        """
+        eps = 1e-4
+    
+        def clip_all(params):
+            return params
+
+        return wasc_params
+    
+    def get_residuals(wasc_params: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Function calculates residuals of market ivd and calibrated ones
+        and Jacobian matrix
+        Args:
+            sabr_params(np.ndarray): model params
+        Returns:
+            res(np.ndarray) : vector or residuals
+            J(np.ndarray)   : Jacobian
+        """
+        # function supports several calibration types
+        J = jacobian_wishart(model=wasc_params, market=market)
+        iv = get_iv_wishart(model=np_to_class(wasc_params), market= market)
+        weights = np.ones_like(market.K)
+        weights = weights / np.sum(weights)
+        res = iv - market.iv
+        return res * weights, J @ np.diag(weights)
+    
+    Q, E, R = start_params.Q, start_params.E, start_params.R
+    start_params = np.array([Q[0][0], Q[0][1], Q[1][0], Q[1][1],
+                             E[0][0], E[0][1], E[1][0], E[1][1],
+                             R[0][0], R[0][1], R[1][0], R[1][1],
+                             ])
+    res = LevenbergMarquardt(500, get_residuals, clip_params, start_params)
+    calibrated_params = np.array(res["x"], dtype=np.float64)
+    error = res["objective"][-1]
+
+    return calibrated_params, error
+
+    # final_vols = get_iv_wishart(model=final_params, market=market)
+
+    
 
 
 
