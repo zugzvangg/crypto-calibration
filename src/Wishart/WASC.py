@@ -23,8 +23,8 @@ _spec_market_params = [
 
 _spec_model_params = [
     ("E11", nb.float64),
-    ("E12", nb.float64),
-    ("E21", nb.float64),
+    ("Ed", nb.float64),
+    # ("Ed", nb.float64),
     ("E22", nb.float64),
     ("Q11", nb.float64),
     ("Q12", nb.float64),
@@ -69,8 +69,8 @@ class MarketParameters(object):
 @nb.experimental.jitclass(_spec_model_params)
 class ModelParameters(object):
     E11: nb.float64
-    E12: nb.float64
-    E21: nb.float64
+    Ed: nb.float64
+    # Ed: nb.float64
     E22: nb.float64
     Q11: nb.float64
     Q12: nb.float64
@@ -84,8 +84,8 @@ class ModelParameters(object):
     def __init__(
         self,
         E11: nb.float64,
-        E12: nb.float64,
-        E21: nb.float64,
+        Ed: nb.float64,
+        # Ed: nb.float64,
         E22: nb.float64,
         Q11: nb.float64,
         Q12: nb.float64,
@@ -97,8 +97,8 @@ class ModelParameters(object):
         R22: nb.float64,
     ):
         self.E11 = E11
-        self.E12 = E12
-        self.E21 = E21
+        # self.Ed = Ed
+        self.Ed = Ed
         self.E22 = E22
         self.Q11 = Q11
         self.Q12 = Q12
@@ -131,14 +131,14 @@ _tmp_values_get_iv_wishart = {
 
 def get_iv_wishart(market: MarketParameters, model: ModelParameters):
     mf = np.log(market.K / market.S)
-    Q11, Q12, Q21, Q22, E11, E12, E21, E22, R11, R12, R21, R22 = (
+    Q11, Q12, Q21, Q22, E11, Ed, E22, R11, R12, R21, R22 = (
         model.Q11,
         model.Q12,
         model.Q21,
         model.Q22,
         model.E11,
-        model.E12,
-        model.E21,
+        # model.Ed,
+        model.Ed,
         model.E22,
         model.R11,
         model.R12,
@@ -159,16 +159,16 @@ def get_iv_wishart(market: MarketParameters, model: ModelParameters):
                 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
             )
             / 3
-            + E12 * (Q11 * Q12 + Q21 * Q22) / 3
-            + E12
+            + Ed * (Q11 * Q12 + Q21 * Q22) / 3
+            + Ed
             * (
                 (2 * Q11 * R11 + 2 * Q21 * R12) * (Q11 * R21 + Q21 * R22)
                 + (Q12 * R21 + Q22 * R22)
                 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
             )
             / 3
-            + E21 * (Q11 * Q12 + Q21 * Q22) / 3
-            + E21
+            + Ed * (Q11 * Q12 + Q21 * Q22) / 3
+            + Ed
             * (
                 (Q11 * R11 + Q21 * R12)
                 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
@@ -186,8 +186,8 @@ def get_iv_wishart(market: MarketParameters, model: ModelParameters):
             - 1.25
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             ** 2
@@ -197,8 +197,8 @@ def get_iv_wishart(market: MarketParameters, model: ModelParameters):
         + mf
         * (
             E11 * (Q11 * R11 + Q21 * R12)
-            + E12 * (Q11 * R21 + Q21 * R22)
-            + E21 * (Q12 * R11 + Q22 * R12)
+            + Ed * (Q11 * R21 + Q21 * R22)
+            + Ed * (Q12 * R11 + Q22 * R12)
             + E22 * (Q12 * R21 + Q22 * R22)
         )
         / (E11 + E22)
@@ -264,8 +264,8 @@ _tmp_values_jacobian_wishart = {
     "Q21": nb.float64,
     "Q22": nb.float64,
     "E11": nb.float64,
-    "E12": nb.float64,
-    "E21": nb.float64,
+    # "Ed": nb.float64,
+    "Ed": nb.float64,
     "E22": nb.float64,
     "R11": nb.float64,
     "R12": nb.float64,
@@ -277,8 +277,8 @@ _tmp_values_jacobian_wishart = {
     "dQ21": nb.float64[:],
     "dQ22": nb.float64[:],
     "dE11": nb.float64[:],
-    "dE12": nb.float64[:],
-    "dE21": nb.float64[:],
+    "dEd": nb.float64[:],
+    "dEd": nb.float64[:],
     "dE22": nb.float64[:],
     "dR11": nb.float64[:],
     "dR12": nb.float64[:],
@@ -290,14 +290,14 @@ _tmp_values_jacobian_wishart = {
 # @nb.njit(locals=_tmp_values_jacobian_wishart)
 def jacobian_wishart(market: MarketParameters, model: ModelParameters):
     mf = np.log(market.K / market.S)
-    Q11, Q12, Q21, Q22, E11, E12, E21, E22, R11, R12, R21, R22 = (
+    Q11, Q12, Q21, Q22, E11, Ed, E22, R11, R12, R21, R22 = (
         model.Q11,
         model.Q12,
         model.Q21,
         model.Q22,
         model.E11,
-        model.E12,
-        model.E21,
+        # model.Ed,
+        model.Ed,
         model.E22,
         model.R11,
         model.R12,
@@ -320,15 +320,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                         4 * R11 * (Q11 * R11 + Q21 * R12)
                         + R21 * (Q12 * R11 + Q22 * R12)
                     )
-                    + E12 * Q12
-                    + E12
+                    + Ed * Q12
+                    + Ed
                     * (
                         2 * R11 * (Q11 * R21 + Q21 * R22)
                         + 2 * R21 * (Q11 * R11 + Q21 * R12)
                         + R21 * (Q12 * R21 + Q22 * R22)
                     )
-                    + E21 * Q12
-                    + E21
+                    + Ed * Q12
+                    + Ed
                     * (
                         R11 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                         + R21 * (Q11 * R11 + Q21 * R12)
@@ -338,15 +338,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     * (2 * Q11 * R21 + Q12 * R11 + 2 * Q21 * R22 + Q22 * R12)
                 )
                 - 7.5
-                * (E11 * R11 + E12 * R21)
+                * (E11 * R11 + Ed * R21)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E11 * R11 + E12 * R21)
+            + 3 * (E11 + E22) ** 2 * (E11 * R11 + Ed * R21)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -358,14 +358,14 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                 (E11 + E22)
                 * (
                     E11 * R11 * (Q11 * R21 + 2 * Q12 * R11 + Q21 * R22 + 2 * Q22 * R12)
-                    + E12 * Q11
-                    + E12
+                    + Ed * Q11
+                    + Ed
                     * (
                         R11 * (Q12 * R21 + Q22 * R22)
                         + R21 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                     )
-                    + E21 * Q11
-                    + E21
+                    + Ed * Q11
+                    + Ed
                     * (
                         R11 * (Q11 * R11 + Q21 * R12)
                         + 2 * R11 * (Q12 * R21 + Q22 * R22)
@@ -379,15 +379,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     )
                 )
                 - 7.5
-                * (E21 * R11 + E22 * R21)
+                * (Ed * R11 + E22 * R21)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E21 * R11 + E22 * R21)
+            + 3 * (E11 + E22) ** 2 * (Ed * R11 + E22 * R21)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -404,15 +404,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                         4 * R12 * (Q11 * R11 + Q21 * R12)
                         + R22 * (Q12 * R11 + Q22 * R12)
                     )
-                    + E12 * Q22
-                    + E12
+                    + Ed * Q22
+                    + Ed
                     * (
                         2 * R12 * (Q11 * R21 + Q21 * R22)
                         + 2 * R22 * (Q11 * R11 + Q21 * R12)
                         + R22 * (Q12 * R21 + Q22 * R22)
                     )
-                    + E21 * Q22
-                    + E21
+                    + Ed * Q22
+                    + Ed
                     * (
                         R12 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                         + R22 * (Q11 * R11 + Q21 * R12)
@@ -422,15 +422,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     * (2 * Q11 * R21 + Q12 * R11 + 2 * Q21 * R22 + Q22 * R12)
                 )
                 - 7.5
-                * (E11 * R12 + E12 * R22)
+                * (E11 * R12 + Ed * R22)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E11 * R12 + E12 * R22)
+            + 3 * (E11 + E22) ** 2 * (E11 * R12 + Ed * R22)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -442,14 +442,14 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                 (E11 + E22)
                 * (
                     E11 * R12 * (Q11 * R21 + 2 * Q12 * R11 + Q21 * R22 + 2 * Q22 * R12)
-                    + E12 * Q21
-                    + E12
+                    + Ed * Q21
+                    + Ed
                     * (
                         R12 * (Q12 * R21 + Q22 * R22)
                         + R22 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                     )
-                    + E21 * Q21
-                    + E21
+                    + Ed * Q21
+                    + Ed
                     * (
                         R12 * (Q11 * R11 + Q21 * R12)
                         + 2 * R12 * (Q12 * R21 + Q22 * R22)
@@ -463,15 +463,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     )
                 )
                 - 7.5
-                * (E21 * R12 + E22 * R22)
+                * (Ed * R12 + E22 * R22)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E21 * R12 + E22 * R22)
+            + 3 * (E11 + E22) ** 2 * (Ed * R12 + E22 * R22)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -489,15 +489,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     + (Q12 * R11 + Q22 * R12)
                     * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                 )
-                + E12 * (Q11 * Q12 + Q21 * Q22)
-                + E12
+                + Ed * (Q11 * Q12 + Q21 * Q22)
+                + Ed
                 * (
                     2 * (Q11 * R11 + Q21 * R12) * (Q11 * R21 + Q21 * R22)
                     + (Q12 * R21 + Q22 * R22)
                     * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                 )
-                + E21 * (Q11 * Q12 + Q21 * Q22)
-                + E21
+                + Ed * (Q11 * Q12 + Q21 * Q22)
+                + Ed
                 * (
                     (Q11 * R11 + Q21 * R12)
                     * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
@@ -514,8 +514,8 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
             + 7.5
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             ** 2
@@ -536,15 +536,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
             * (Q11 * R11 + Q21 * R12)
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             + 3.75
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             ** 2
@@ -555,39 +555,39 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
         * (E11 + E22) ** 2
         * (
             E11 * (Q11 * R11 + Q21 * R12)
-            + E12 * (Q11 * R21 + Q21 * R22)
-            + E21 * (Q12 * R11 + Q22 * R12)
+            + Ed * (Q11 * R21 + Q21 * R22)
+            + Ed * (Q12 * R11 + Q22 * R12)
             + E22 * (Q12 * R21 + Q22 * R22)
         )
         + (E11 + E22) ** 4
     ) / (E11 + E22) ** 4
-    dE12 = (
-        mf
-        * (
-            mf
-            * (
-                (E11 + E22)
-                * (
-                    Q11 * Q12
-                    + Q21 * Q22
-                    + 2 * (Q11 * R11 + Q21 * R12) * (Q11 * R21 + Q21 * R22)
-                    + (Q12 * R21 + Q22 * R22)
-                    * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
-                )
-                - 7.5
-                * (Q11 * R21 + Q21 * R22)
-                * (
-                    E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
-                    + E22 * (Q12 * R21 + Q22 * R22)
-                )
-            )
-            + 3 * (E11 + E22) ** 2 * (Q11 * R21 + Q21 * R22)
-        )
-        / (3 * (E11 + E22) ** 3)
-    )
-    dE21 = (
+    # dEd = (
+    #     mf
+    #     * (
+    #         mf
+    #         * (
+    #             (E11 + E22)
+    #             * (
+    #                 Q11 * Q12
+    #                 + Q21 * Q22
+    #                 + 2 * (Q11 * R11 + Q21 * R12) * (Q11 * R21 + Q21 * R22)
+    #                 + (Q12 * R21 + Q22 * R22)
+    #                 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
+    #             )
+    #             - 7.5
+    #             * (Q11 * R21 + Q21 * R22)
+    #             * (
+    #                 E11 * (Q11 * R11 + Q21 * R12)
+    #                 + Ed * (Q11 * R21 + Q21 * R22)
+    #                 + Ed * (Q12 * R11 + Q22 * R12)
+    #                 + E22 * (Q12 * R21 + Q22 * R22)
+    #             )
+    #         )
+    #         + 3 * (E11 + E22) ** 2 * (Q11 * R21 + Q21 * R22)
+    #     )
+    #     / (3 * (E11 + E22) ** 3)
+    # )
+    dEd = (
         mf
         * (
             mf
@@ -604,8 +604,8 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                 * (Q12 * R11 + Q22 * R12)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
@@ -626,15 +626,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     + (Q12 * R11 + Q22 * R12)
                     * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                 )
-                + E12 * (Q11 * Q12 + Q21 * Q22)
-                + E12
+                + Ed * (Q11 * Q12 + Q21 * Q22)
+                + Ed
                 * (
                     2 * (Q11 * R11 + Q21 * R12) * (Q11 * R21 + Q21 * R22)
                     + (Q12 * R21 + Q22 * R22)
                     * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                 )
-                + E21 * (Q11 * Q12 + Q21 * Q22)
-                + E21
+                + Ed * (Q11 * Q12 + Q21 * Q22)
+                + Ed
                 * (
                     (Q11 * R11 + Q21 * R12)
                     * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
@@ -651,8 +651,8 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
             + 7.5
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             ** 2
@@ -673,15 +673,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
             * (Q12 * R21 + Q22 * R22)
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             + 3.75
             * (
                 E11 * (Q11 * R11 + Q21 * R12)
-                + E12 * (Q11 * R21 + Q21 * R22)
-                + E21 * (Q12 * R11 + Q22 * R12)
+                + Ed * (Q11 * R21 + Q21 * R22)
+                + Ed * (Q12 * R11 + Q22 * R12)
                 + E22 * (Q12 * R21 + Q22 * R22)
             )
             ** 2
@@ -692,8 +692,8 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
         * (E11 + E22) ** 2
         * (
             E11 * (Q11 * R11 + Q21 * R12)
-            + E12 * (Q11 * R21 + Q21 * R22)
-            + E21 * (Q12 * R11 + Q22 * R12)
+            + Ed * (Q11 * R21 + Q21 * R22)
+            + Ed * (Q12 * R11 + Q22 * R12)
             + E22 * (Q12 * R21 + Q22 * R22)
         )
         + (E11 + E22) ** 4
@@ -712,12 +712,12 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                         + Q12 * (Q12 * R11 + Q22 * R12)
                         + Q12 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                     )
-                    + E12
+                    + Ed
                     * (
                         2 * Q11 * (Q11 * R21 + Q21 * R22)
                         + Q12 * (Q12 * R21 + Q22 * R22)
                     )
-                    + E21
+                    + Ed
                     * (
                         Q11 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                         + Q12 * (Q11 * R11 + Q21 * R12)
@@ -726,15 +726,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     + E22 * Q12 * (Q11 * R21 + Q21 * R22)
                 )
                 - 7.5
-                * (E11 * Q11 + E21 * Q12)
+                * (E11 * Q11 + Ed * Q12)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E11 * Q11 + E21 * Q12)
+            + 3 * (E11 + E22) ** 2 * (E11 * Q11 + Ed * Q12)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -751,12 +751,12 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                         + Q22 * (Q12 * R11 + Q22 * R12)
                         + Q22 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                     )
-                    + E12
+                    + Ed
                     * (
                         2 * Q21 * (Q11 * R21 + Q21 * R22)
                         + Q22 * (Q12 * R21 + Q22 * R22)
                     )
-                    + E21
+                    + Ed
                     * (
                         Q21 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                         + Q22 * (Q11 * R11 + Q21 * R12)
@@ -765,15 +765,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     + E22 * Q22 * (Q11 * R21 + Q21 * R22)
                 )
                 - 7.5
-                * (E11 * Q21 + E21 * Q22)
+                * (E11 * Q21 + Ed * Q22)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E11 * Q21 + E21 * Q22)
+            + 3 * (E11 + E22) ** 2 * (E11 * Q21 + Ed * Q22)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -785,13 +785,13 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                 (E11 + E22)
                 * (
                     E11 * Q11 * (Q12 * R11 + Q22 * R12)
-                    + E12
+                    + Ed
                     * (
                         2 * Q11 * (Q11 * R11 + Q21 * R12)
                         + Q11 * (Q12 * R21 + Q22 * R22)
                         + Q12 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                     )
-                    + E21
+                    + Ed
                     * (
                         Q11 * (Q11 * R11 + Q21 * R12)
                         + 2 * Q12 * (Q12 * R11 + Q22 * R12)
@@ -804,15 +804,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     )
                 )
                 - 7.5
-                * (E12 * Q11 + E22 * Q12)
+                * (Ed * Q11 + E22 * Q12)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E12 * Q11 + E22 * Q12)
+            + 3 * (E11 + E22) ** 2 * (Ed * Q11 + E22 * Q12)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -824,13 +824,13 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                 (E11 + E22)
                 * (
                     E11 * Q21 * (Q12 * R11 + Q22 * R12)
-                    + E12
+                    + Ed
                     * (
                         2 * Q21 * (Q11 * R11 + Q21 * R12)
                         + Q21 * (Q12 * R21 + Q22 * R22)
                         + Q22 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
                     )
-                    + E21
+                    + Ed
                     * (
                         Q21 * (Q11 * R11 + Q21 * R12)
                         + 2 * Q22 * (Q12 * R11 + Q22 * R12)
@@ -843,15 +843,15 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
                     )
                 )
                 - 7.5
-                * (E12 * Q21 + E22 * Q22)
+                * (Ed * Q21 + E22 * Q22)
                 * (
                     E11 * (Q11 * R11 + Q21 * R12)
-                    + E12 * (Q11 * R21 + Q21 * R22)
-                    + E21 * (Q12 * R11 + Q22 * R12)
+                    + Ed * (Q11 * R21 + Q21 * R22)
+                    + Ed * (Q12 * R11 + Q22 * R12)
                     + E22 * (Q12 * R21 + Q22 * R22)
                 )
             )
-            + 3 * (E11 + E22) ** 2 * (E12 * Q21 + E22 * Q22)
+            + 3 * (E11 + E22) ** 2 * (Ed * Q21 + E22 * Q22)
         )
         / (3 * (E11 + E22) ** 3)
     )
@@ -862,10 +862,9 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
         dQ21 / (2 * iv),
         dQ22 / (2 * iv),
     )
-    dE11, dE12, dE21, dE22 = (
+    dE11, dEd, dE22 = (
         dE11 / (2 * iv),
-        dE12 / (2 * iv),
-        dE21 / (2 * iv),
+        dEd / (2 * iv),
         dE22 / (2 * iv),
     )
     dR11, dR12, dR21, dR22 = (
@@ -875,14 +874,13 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
         dR22 / (2 * iv),
     )
 
-    return dQ11, dQ12, dQ21, dQ22, dE11, dE12, dE21, dE22, dR11, dR12, dR21, dR22
+    return dQ11, dQ12, dQ21, dQ22, dE11, dEd, dE22, dR11, dR12, dR21, dR22
 
 
 def calibrate_wasc(
     df: pd.DataFrame,
     start_params: np.array,
     timestamp: int = None,
-    calibration_type: str = "all",
 ):
     """
     Function to calibrate SABR model.
@@ -899,8 +897,6 @@ def calibrate_wasc(
         @param start_params (np.array): Params to start calibration via LM from
         @param timestamp (int): On which timestamp to calibrate the model.
             Should be in range of df timestamps.
-        @param calibration_type(str): Type of calibration. Should be one of: ["all", "beta"]
-        @param beta(float): Fix it to needed value if you don't want to calibrate it
 
     Return:
         calibrated_params (np.array): Array of optimal params on timestamp tick.
@@ -975,7 +971,7 @@ def calibrate_wasc(
             wasc_params[8],
             wasc_params[9],
             wasc_params[10],
-            wasc_params[11],
+            # wasc_params[11],
         )
 
         J = jacobian_wishart(model=model_parameters, market=market)
@@ -1000,7 +996,7 @@ def calibrate_wasc(
         calibrated_params[8],
         calibrated_params[9],
         calibrated_params[10],
-        calibrated_params[11],
+        # calibrated_params[11],
     )
     final_vols = get_iv_wishart(model=final_params, market=market)
     tick["calibrated_iv"] = final_vols
