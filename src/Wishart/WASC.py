@@ -80,8 +80,6 @@ class ModelParameters(object):
         self.R = R
 
 
-_tmp_values_get_iv_wishart = {}
-
 _tmp_values_get_iv_wishart = {
     "f": nb.float64,
     "Ks": nb.types.Array(nb.float64, 1, "A"),
@@ -148,6 +146,39 @@ def get_iv_wishart(market: MarketParameters, model: ModelParameters):
     return Es
 
 
+_tmp_values_jacobian_wishart = {
+    "Q": nb.types.Array(nb.float64, 2, "A"),
+    "E": nb.types.Array(nb.float64, 2, "A"),
+    "R": nb.types.Array(nb.float64, 2, "A"),
+    "mf": nb.float64[:],
+    "Q11": nb.float64,
+    "Q12": nb.float64,
+    "Q21": nb.float64,
+    "Q22": nb.float64,
+    "E11": nb.float64,
+    "E12": nb.float64,
+    "E21": nb.float64,
+    "E22": nb.float64,
+    "R11": nb.float64,
+    "R12": nb.float64,
+    "R21": nb.float64,
+    "R22": nb.float64,
+    "iv": nb.float64[:],
+    "dQ11": nb.float64[:],
+    "dQ12": nb.float64[:],
+    "dQ21": nb.float64[:],
+    "dQ22": nb.float64[:],
+    "dE11": nb.float64[:],
+    "dE12": nb.float64[:],
+    "dE21": nb.float64[:],
+    "dE22": nb.float64[:],
+    "dR11": nb.float64[:],
+    "dR12": nb.float64[:],
+    "dR21": nb.float64[:],
+    "dR22": nb.float64[:],
+}
+
+# @nb.njit(locals=_tmp_values_jacobian_wishart)
 def jacobian_wishart(market: MarketParameters, model: ModelParameters):
     Q = model.Q
     E = model.E
@@ -157,20 +188,6 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
     E11, E12, E21, E22 = E[0][0], E[0][1], E[1][0], E[1][1]
     R11, R12, R21, R22 = R[0][0], R[0][1], R[1][0], R[1][1]
     iv = get_iv_wishart(market=market, model=model)
-    dQ11, dQ12, dQ21, dQ22, dE11, dE12, dE21, dE22, dR11, dR12, dR21, dR22 = (
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-        np.float64(0.0),
-    )
 
     dQ11 = mf*(mf*((E11 + E22)*(2*E11*Q11 + E11*(4*R11*(Q11*R11 + Q21*R12) + R21*(Q12*R11 + Q22*R12)) + E12*Q12 + E12*(2*R11*(Q11*R21 + Q21*R22) + 2*R21*(Q11*R11 + Q21*R12) + R21*(Q12*R21 + Q22*R22)) + E21*Q12 + E21*(R11*(Q11*R21 + Q12*R11 + Q21*R22 + Q22*R12) + R21*(Q11*R11 + Q21*R12)) + E22*R21*(2*Q11*R21 + Q12*R11 + 2*Q21*R22 + Q22*R12)) - 7.5*(E11*R11 + E12*R21)*(E11*(Q11*R11 + Q21*R12) + E12*(Q11*R21 + Q21*R22) + E21*(Q12*R11 + Q22*R12) + E22*(Q12*R21 + Q22*R22))) + 3*(E11 + E22)**2*(E11*R11 + E12*R21))/(3*(E11 + E22)**3)
     dQ12 = mf*(mf*((E11 + E22)*(E11*R11*(Q11*R21 + 2*Q12*R11 + Q21*R22 + 2*Q22*R12) + E12*Q11 + E12*(R11*(Q12*R21 + Q22*R22) + R21*(Q11*R21 + Q12*R11 + Q21*R22 + Q22*R12)) + E21*Q11 + E21*(R11*(Q11*R11 + Q21*R12) + 2*R11*(Q12*R21 + Q22*R22) + 2*R21*(Q12*R11 + Q22*R12)) + 2*E22*Q12 + E22*(R11*(Q11*R21 + Q21*R22) + 4*R21*(Q12*R21 + Q22*R22))) - 7.5*(E21*R11 + E22*R21)*(E11*(Q11*R11 + Q21*R12) + E12*(Q11*R21 + Q21*R22) + E21*(Q12*R11 + Q22*R12) + E22*(Q12*R21 + Q22*R22))) + 3*(E11 + E22)**2*(E21*R11 + E22*R21))/(3*(E11 + E22)**3)
@@ -194,6 +211,35 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
     return dQ11, dQ12, dQ21, dQ22, dE11, dE12, dE21, dE22, dR11, dR12, dR21, dR22
 
 
+def calibrate_wasc(
+    df: pd.DataFrame,
+    start_params: np.array,
+    timestamp: int = None,
+    calibration_type: str = "all",
+    beta: float = None,
+):
+        """
+    Function to calibrate SABR model.
+    Attributes:
+        @param df (pd.DataFrame): Dataframe with history
+        [
+            timestamp(ns),
+            type(put or call),
+            strike_price(usd),
+            expiration(ns),
+            mark_price(etc/btc),
+            underlying_price(usd)
+        ]
+        @param start_params (np.array): Params to start calibration via LM from
+        @param timestamp (int): On which timestamp to calibrate the model.
+            Should be in range of df timestamps.
+        @param calibration_type(str): Type of calibration. Should be one of: ["all", "beta"]
+        @param beta(float): Fix it to needed value if you don't want to calibrate it
+
+    Return:
+        calibrated_params (np.array): Array of optimal params on timestamp tick.
+        error (float): Value of error on calibration.
+    """
 
 
 
