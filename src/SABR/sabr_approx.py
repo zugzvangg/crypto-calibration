@@ -89,18 +89,26 @@ _tmp_values_vol_sabr = {
 }
 
 
-@nb.njit(locals=_tmp_values_vol_sabr)
+# @nb.njit(locals=_tmp_values_vol_sabr)
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
 ) -> np.array:
-    f, Ks, T = market.S, market.K, market.T
+    f, Ks, T, types = market.S, market.K, market.T, market.types
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     n = len(Ks)
     sigmas = np.zeros(n, dtype=np.float64)
+    deltas = np.zeros(n, dtype=np.float64)
     for index in range(n):
         K = Ks[index]
         x = np.log(f / K)
+        dIH1dF = alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 * (beta - 1) / (
+            24 * f
+        ) + alpha * beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) * (
+            beta / 2 - 1 / 2
+        ) / (
+            4 * f
+        )
 
         I_H_1 = (
             alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
@@ -110,28 +118,64 @@ def vol_sabr(
 
         if x == 0.0:
             I_B_0 = K ** (beta - 1) * alpha
-            sigma = I_B_0 * (1 + I_H_1 * T)
+            dI_B_0_dF = 0.0
 
         elif v == 0.0:
             I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + f ** (1 - beta))
-            sigma = I_B_0 * (1 + I_H_1 * T)
+            dI_B_0_dF = (
+                alpha
+                * (beta - 1)
+                * (
+                    f * (K ** (1 - beta) - f ** (1 - beta))
+                    - f ** (2 - beta) * (beta - 1) * x
+                )
+                / (f**2 * (K ** (1 - beta) - f ** (1 - beta)) ** 2)
+            )
 
         else:
             if beta == 1.0:
                 z = v * x / alpha
+                sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+
+                dI_B_0_dF = (
+                    v
+                    * (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) - v * x)
+                    / (alpha * f * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
+                )
 
             elif beta < 1.0:
                 z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
+                sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+                dI_B_0_dF = (
+                    v
+                    * (
+                        alpha
+                        * f
+                        * (-rho + z + sqrt)
+                        * sqrt
+                        * np.log((rho - z - sqrt) / (rho - 1))
+                        + f ** (2 - beta) * v * x * (rho - z - sqrt)
+                    )
+                    / (
+                        alpha
+                        * f**2
+                        * (-rho + z + sqrt)
+                        * sqrt
+                        * np.log((rho - z - sqrt) / (rho - 1)) ** 2
+                    )
+                )
 
-            I_B_0 = (
-                v
-                * x
-                / (np.log((np.sqrt(1 - 2 * rho * z + z**2) + z - rho) / (1 - rho)))
-            )
-            sigma = I_B_0 * (1 + I_H_1 * T)
+            I_B_0 = v * x / (np.log((sqrt + z - rho) / (1 - rho)))
 
+        sigma = I_B_0 * (1 + I_H_1 * T)
+        dsigma_df = dI_B_0_dF * (1 + I_H_1 * T) + dIH1dF * I_B_0 * T
+        d1 = (np.log(f / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+        delta_bsm = sps.norm.cdf(d1)
+        # call or put
+        delta_bsm = delta_bsm if types[index] else delta_bsm - 1.0
+        deltas[index] = dsigma_df * delta_bsm
         sigmas[index] = sigma
-    return sigmas
+    return sigmas, deltas
 
 
 _tmp_values_jacobian_sabr = {
@@ -539,8 +583,10 @@ def calibrate_sabr(
 
         def clip_all(params):
             alpha, v, beta, rho = params
+            # alpha = np.clip(alpha, eps, 50.0)
+            # alpha = np.clip(alpha, eps, 0.8)
             alpha = np.clip(alpha, eps, 50.0)
-            v = np.clip(v, eps, 100.0)
+            v = np.clip(v, eps, 50.0)
             # no need there cause by approx formula it can be 1.0
             beta = np.clip(beta, eps, 1.0)
             rho = np.clip(rho, -1.0 + eps, 1.0 - eps)
@@ -590,7 +636,7 @@ def calibrate_sabr(
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
             J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
-        iv = vol_sabr(model=model_parameters, market=market)
+        iv, _ = vol_sabr(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = iv - market.iv
@@ -619,7 +665,8 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols = vol_sabr(model=final_params, market=market)
+    final_vols, deltas = vol_sabr(model=final_params, market=market)
+    tick["delta"] = deltas
     tick["calibrated_iv"] = final_vols
     result = tick[
         [
@@ -629,6 +676,7 @@ def calibrate_sabr(
             "underlying_price",
             "iv",
             "calibrated_iv",
+            "delta",
         ]
     ]
     result["iv"] = 100 * result["iv"]
