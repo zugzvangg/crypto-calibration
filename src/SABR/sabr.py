@@ -84,12 +84,12 @@ _tmp_values_vol_sabr = {
     "sig": nb.types.Array(nb.float64, 1, "A"),
 }
 
+
 # @nb.njit(locals=_tmp_values_vol_sabr)
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
 ) -> np.array:
-
     Fm = np.multiply(market.S, market.K)
     # Fm = market.K
     # Fm = np.sqrt(Fms)
@@ -118,6 +118,7 @@ def vol_sabr(
 
 
 _tmp_values_jacobian_sabr = {}
+
 
 # @nb.njit(_signature_jacobian_sabr, locals=_tmp_values_jacobian_sabr)
 def jacobian_sabr(
@@ -248,7 +249,7 @@ def calibrate_sabr(
     # tick dataframes may have not similar timestamps -->
     # not equal value if underlying --> take mean
     S_val = np.float64(tick.underlying_price.mean())
-    market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv = iv)
+    market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv=iv)
 
     def clip_params(sabr_params: np.ndarray) -> np.ndarray:
         """
@@ -353,6 +354,6 @@ def calibrate_sabr(
             "calibrated_iv",
         ]
     ]
-    result["iv"] = 100*result["iv"]
-    result["calibrated_iv"] = 100*result["calibrated_iv"]
+    result["iv"] = 100 * result["iv"]
+    result["calibrated_iv"] = 100 * result["calibrated_iv"]
     return calibrated_params, error, result
