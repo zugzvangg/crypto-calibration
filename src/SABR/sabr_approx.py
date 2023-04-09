@@ -4,7 +4,7 @@ import pandas as pd
 from src.utils import get_tick, get_implied_volatility
 from typing import Final, Tuple
 from src.levenberg_marquardt import LevenbergMarquardt
-from scipy import stats as sps
+import math
 from sklearn.linear_model import LinearRegression
 
 _spec_market_params = [
@@ -90,6 +90,7 @@ _tmp_values_vol_sabr = {
 
 
 # @nb.njit(locals=_tmp_values_vol_sabr)
+# @nb.njit 
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
@@ -177,11 +178,24 @@ def vol_sabr(
         dsigma_df = dI_B_0_dF * (1 + I_H_1 * T) + dIH1dF * I_B_0 * T
         dsigma_dalpha = I_B_0 * (1 + I_H_1 * T) + dI_H_alpha * I_B_0 * T
         d1 = (np.log(f / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
-        vega_bsm = f*np.sqrt(T)*sps.norm.pdf(d1)
-        delta_bsm = sps.norm.cdf(d1)
+
+        # numba does not like scipy
+        def pdf(x):
+            probability = 1.0 / np.sqrt(2 * np.pi)  
+            probability *= np.exp(-0.5 * x**2)
+            return probability
+        
+        def cdf(x):
+            return (1.0 + math.erf(x / np.sqrt(2.0))) / 2.0
+
+        # vega_bsm = f*np.sqrt(T)*sps.norm.pdf(d1)
+        vega_bsm = f*np.sqrt(T)*pdf(d1)
+        # delta_bsm = sps.norm.cdf(d1)
+        delta_bsm = cdf(d1)
         # for put
-        delta_bsm = delta_bsm if types[index] else delta_bsm - 1
+        delta_bsm = delta_bsm if types[index] else delta_bsm - 1.0
         deltas[index] = delta_bsm + vega_bsm*(dsigma_df + dsigma_dalpha*rho*v/f**beta)
+        deltas[index] = delta_bsm 
         vegas[index] = vega_bsm*(dsigma_dalpha + dsigma_df*rho*f**beta/v)
         sigmas[index] = sigma
     return sigmas, deltas, vegas
@@ -676,7 +690,7 @@ def calibrate_sabr(
     )
     final_vols, deltas, vegas = vol_sabr(model=final_params, market=market)
     tick["delta"] = deltas
-    tick["vegas"] = vegas
+    tick["vega"] = vegas
     tick["calibrated_iv"] = final_vols
     result = tick[
         [
@@ -687,7 +701,7 @@ def calibrate_sabr(
             "iv",
             "calibrated_iv",
             "delta",
-            "vegas"
+            "vega"
         ]
     ]
     result["iv"] = 100 * result["iv"]
