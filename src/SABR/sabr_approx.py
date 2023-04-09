@@ -99,6 +99,7 @@ def vol_sabr(
     n = len(Ks)
     sigmas = np.zeros(n, dtype=np.float64)
     deltas = np.zeros(n, dtype=np.float64)
+    vegas = np.zeros(n, dtype=np.float64)
     for index in range(n):
         K = Ks[index]
         x = np.log(f / K)
@@ -108,6 +109,11 @@ def vol_sabr(
             beta / 2 - 1 / 2
         ) / (
             4 * f
+        )
+
+        dI_H_alpha = (
+            alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 12
+            + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
         )
 
         I_H_1 = (
@@ -169,13 +175,16 @@ def vol_sabr(
 
         sigma = I_B_0 * (1 + I_H_1 * T)
         dsigma_df = dI_B_0_dF * (1 + I_H_1 * T) + dIH1dF * I_B_0 * T
+        dsigma_dalpha = I_B_0 * (1 + I_H_1 * T) + dI_H_alpha * I_B_0 * T
         d1 = (np.log(f / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+        vega_bsm = f*np.sqrt(T)*sps.norm.pdf(d1)
         delta_bsm = sps.norm.cdf(d1)
-        # call or put
-        delta_bsm = delta_bsm if types[index] else delta_bsm - 1.0
-        deltas[index] = dsigma_df * delta_bsm
+        # for put
+        delta_bsm = delta_bsm if types[index] else delta_bsm - 1
+        deltas[index] = delta_bsm + vega_bsm*(dsigma_df + dsigma_dalpha*rho*v/f**beta)
+        vegas[index] = vega_bsm*(dsigma_dalpha + dsigma_df*rho*f**beta/v)
         sigmas[index] = sigma
-    return sigmas, deltas
+    return sigmas, deltas, vegas
 
 
 _tmp_values_jacobian_sabr = {
@@ -636,7 +645,7 @@ def calibrate_sabr(
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
             J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
-        iv, _ = vol_sabr(model=model_parameters, market=market)
+        iv, _, _ = vol_sabr(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = iv - market.iv
@@ -665,8 +674,9 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols, deltas = vol_sabr(model=final_params, market=market)
+    final_vols, deltas, vegas = vol_sabr(model=final_params, market=market)
     tick["delta"] = deltas
+    tick["vegas"] = vegas
     tick["calibrated_iv"] = final_vols
     result = tick[
         [
@@ -677,6 +687,7 @@ def calibrate_sabr(
             "iv",
             "calibrated_iv",
             "delta",
+            "vegas"
         ]
     ]
     result["iv"] = 100 * result["iv"]
