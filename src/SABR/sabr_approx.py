@@ -703,6 +703,8 @@ def calibrate_sabr(
     tick["dc_drho"] = dc_drho
     tick["dc_dv"] = dc_dv
     tick["calibrated_iv"] = final_vols
+    tick["rho"] = final_params.rho
+    tick["volvol"] = final_params.v
     result = tick[
         [
             "type",
@@ -714,7 +716,10 @@ def calibrate_sabr(
             "delta",
             "vega",
             "dc_drho",
-            "dc_dv"
+            "dc_dv",
+            "mark_price",
+            "rho",
+            "volvol"
         ]
     ]
     result["iv"] = 100 * result["iv"]
