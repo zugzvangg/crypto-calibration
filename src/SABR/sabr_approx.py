@@ -98,9 +98,12 @@ def vol_sabr(
     f, Ks, T, types = market.S, market.K, market.T, market.types
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     n = len(Ks)
+    dsigma_dalphas, dsigma_dvs, _, dsigma_drhos = jacobian_sabr(model = model, market=market)
     sigmas = np.zeros(n, dtype=np.float64)
     deltas = np.zeros(n, dtype=np.float64)
     vegas = np.zeros(n, dtype=np.float64)
+    dc_drho = np.zeros(n, dtype=np.float64)
+    dc_dv = np.zeros(n, dtype=np.float64)
     for index in range(n):
         K = Ks[index]
         x = np.log(f / K)
@@ -112,10 +115,10 @@ def vol_sabr(
             4 * f
         )
 
-        dI_H_alpha = (
-            alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 12
-            + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
-        )
+        # dI_H_alpha = (
+        #     alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 12
+        #     + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+        # )
 
         I_H_1 = (
             alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
@@ -176,7 +179,7 @@ def vol_sabr(
 
         sigma = I_B_0 * (1 + I_H_1 * T)
         dsigma_df = dI_B_0_dF * (1 + I_H_1 * T) + dIH1dF * I_B_0 * T
-        dsigma_dalpha = I_B_0 * (1 + I_H_1 * T) + dI_H_alpha * I_B_0 * T
+        # dsigma_dalpha = I_B_0 * (1 + I_H_1 * T) + dI_H_alpha * I_B_0 * T
         d1 = (np.log(f / K) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
 
         # numba does not like scipy
@@ -193,12 +196,18 @@ def vol_sabr(
         # delta_bsm = sps.norm.cdf(d1)
         delta_bsm = cdf(d1)
         # for put
+
+        dsigma_dalpha, dsigma_dv,  dsigma_drho = dsigma_dalphas[index], dsigma_dvs[index], dsigma_drhos[index]
+
         delta_bsm = delta_bsm if types[index] else delta_bsm - 1.0
         deltas[index] = delta_bsm + vega_bsm*(dsigma_df + dsigma_dalpha*rho*v/f**beta)
         deltas[index] = delta_bsm 
         vegas[index] = vega_bsm*(dsigma_dalpha + dsigma_df*rho*f**beta/v)
+        dc_drho[index] = vega_bsm*dsigma_drho
+        dc_dv[index] = vega_bsm*dsigma_dv
         sigmas[index] = sigma
-    return sigmas, deltas, vegas
+
+    return sigmas, deltas, vegas, dc_drho, dc_dv
 
 
 _tmp_values_jacobian_sabr = {
@@ -659,7 +668,7 @@ def calibrate_sabr(
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
             J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
-        iv, _, _ = vol_sabr(model=model_parameters, market=market)
+        iv, _, _ , _ , _= vol_sabr(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = iv - market.iv
@@ -688,9 +697,11 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols, deltas, vegas = vol_sabr(model=final_params, market=market)
+    final_vols, deltas, vegas, dc_drho, dc_dv  = vol_sabr(model=final_params, market=market)
     tick["delta"] = deltas
     tick["vega"] = vegas
+    tick["dc_drho"] = dc_drho
+    tick["dc_dv"] = dc_dv
     tick["calibrated_iv"] = final_vols
     result = tick[
         [
@@ -701,7 +712,9 @@ def calibrate_sabr(
             "iv",
             "calibrated_iv",
             "delta",
-            "vega"
+            "vega",
+            "dc_drho",
+            "dc_dv"
         ]
     ]
     result["iv"] = 100 * result["iv"]
