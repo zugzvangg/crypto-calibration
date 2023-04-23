@@ -41,8 +41,11 @@ def get_tick(df: pd.DataFrame, timestamp: int = None):
     data_grouped = data_grouped[data_grouped["strike_price"] <= 10_000]
     return data_grouped
 
+
 # Newton-Raphsen
 nb.njit
+
+
 def get_implied_volatility(
     option_type: str,
     C: float,
@@ -84,37 +87,61 @@ def get_implied_volatility(
         vol = vol - dv
     return vol
 
-def process_data(data, granularity: int = 5):
+
+def process_data(data, granularity: int = 5) -> pd.DataFrame:
     """
     Args:
         data (pd.DataFrame): dataframe of .h5 format to preprocess.
         granularity (int): In which granularity in minutes to resample.
+    Return:
+        df (pd.DataFrame): Preprocessed dataframe
     """
     # only options
     time_granularity = f"{granularity}min"
-    df = data[(data["instrument"].str.endswith("C")) | (data["instrument"].str.endswith("P"))].copy().set_index("dt")
-    df = df.groupby("instrument").resample(time_granularity)["price"].ohlc().ffill().reset_index()[["instrument", "dt", "close"]]
-    df = df.rename(columns = {"close": "price"})
+    df = (
+        data[
+            (data["instrument"].str.endswith("C"))
+            | (data["instrument"].str.endswith("P"))
+        ]
+        .copy()
+        .set_index("dt")
+    )
+    df = (
+        df.groupby("instrument")
+        .resample(time_granularity)["price"]
+        .ohlc()
+        .ffill()
+        .reset_index()[["instrument", "dt", "close"]]
+    )
+    df = df.rename(columns={"close": "price"})
     df["type"] = np.where(df["instrument"].str.endswith("C"), "call", "put")
-    
-    perpetual = data[data["instrument"] == "ETH-PERPETUAL"][["dt", "price"]].copy().set_index("dt")
-    perpetual = perpetual.resample(time_granularity).agg({'price': 'mean'}).ffill().reset_index()
-    perpetual = perpetual.rename(columns = {"price": "underlying_price"})
-    
+
+    perpetual = (
+        data[data["instrument"] == "ETH-PERPETUAL"][["dt", "price"]]
+        .copy()
+        .set_index("dt")
+    )
+    perpetual = (
+        perpetual.resample(time_granularity)
+        .agg({"price": "mean"})
+        .ffill()
+        .reset_index()
+    )
+    perpetual = perpetual.rename(columns={"price": "underlying_price"})
+
     def get_strike(x):
         return int(x.split("-")[2])
-    
+
     def get_expiration(x):
         return x.split("-")[1]
-    
 
     df["strike_price"] = df["instrument"].apply(get_strike)
     df["expiration"] = df["instrument"].apply(get_expiration)
-    
+
     def unix_time_millis(dt):
         epoch = datetime.datetime.utcfromtimestamp(0)
         return int((dt - epoch).total_seconds() * 1000_000)
-    
+
     def get_normal_date(s):
         """Function to convert date to find years to maturity"""
         monthToNum = {
@@ -139,17 +166,27 @@ def process_data(data, granularity: int = 5):
         except:
             day = int(full_date[:1])
             month = monthToNum[full_date[1:4]]
-        
+
         year = int("20" + full_date[-2:])
         exp_date = datetime.datetime(year, month, day)
         return unix_time_millis(exp_date)
-    
+
     df = df.merge(perpetual, on="dt")
     df["timestamp"] = df["dt"].apply(unix_time_millis)
     df["expiration"] = df["instrument"].apply(get_normal_date)
-    df = df.rename(columns = {"price": "mark_price"})
-    
-    
+    df["tau"] = (df.expiration - df.timestamp) / 1e6 / 3600 / 24 / 365
+    df = df.rename(columns={"price": "mark_price"})
+    df["mark_price_usd"] = df["mark_price"] * df["underlying_price"]
+
+    # filter only not expired and out of the money
+    df = df[df["tau"] > 0.0]
+
+    df = df[
+        ((df["type"] == "call") & (df["underlying_price"] <= df["strike_price"]))
+        | ((df["type"] == "put") & (df["underlying_price"] >= df["strike_price"]))
+    ]
+    # drop very big put strikes
+    df = df[df["strike_price"] <= df["underlying_price"].max()*5]
     return df
 
 
@@ -359,5 +396,6 @@ bid_ask_approx = {
 def get_bid_ask(strike):
     return bid_ask_approx[strike]
 
-def round_params(params, n_signs = 3):
+
+def round_params(params, n_signs=3):
     return [round(x, n_signs) for x in params]

@@ -573,7 +573,9 @@ def calibrate_sabr(
         raise ValueError(
             f"calibration_type should be from {available_calibration_types}"
         )
-    tick = get_tick(df=df, timestamp=timestamp)
+    timestamp = timestamp if timestamp else df.sample(1)["dt"].iloc[0]
+    tick = df[df["dt"] == timestamp].copy()
+    assert len(tick)!=0, f"No data on timestamp {timestamp}"
     iv = []
     # count ivs
     for index, t in tick.iterrows():
@@ -598,9 +600,7 @@ def calibrate_sabr(
     types = np.where(tick["type"] == "call", True, False)
     # take it zero as on deribit
     r_val = np.float64(0.0)
-    # tick dataframes may have not similar timestamps -->
-    # not equal value if underlying --> take mean
-    S_val = np.float64(tick.underlying_price.mean())
+    S_val = np.float64(tick.underlying_price.iloc[0])
     market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv=iv)
 
     def clip_params(sabr_params: np.ndarray) -> np.ndarray:
