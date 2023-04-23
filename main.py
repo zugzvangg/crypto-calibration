@@ -1,8 +1,8 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-# from src.SABR.sabr import ModelParameters, MarketParameters, vol_sabr, jacobian_sabr
-from src.Wishart.wishart import get_iv_wishart, WirsherModelParameters, MarketParameters
+# from src.Wishart.WASC import get_iv_wishart, ModelParameters, MarketParameters, jacobian_wishart
+from src.SABR.sabr_approx import vol_sabr, MarketParameters, ModelParameters
 
 karr = np.array(
     [
@@ -57,20 +57,26 @@ S_val = np.float64(1.0)
 r_val = np.float64(0.02)
 
 
-# alpha = np.float64(1.0)
-# v = np.float64(0.5)
-# beta = np.float64(0.5)
-# rho = np.float64(0.01)
+alpha = np.float64(1.0)
+v = np.float64(0.5)
+beta = np.float64(1.0)
+rho = np.float64(0.01)
 
-SIGMA = np.array([[0.4, 0.0], [0, 0.35]], dtype = np.float64)
-Q = np.array([[0.3, 0.0], [0, 0.2]], dtype = np.float64)
-a = 0.5
-R = a*np.eye(2, dtype=np.float64)
+# E = np.array([[0.4, 0.0], [0, 0.35]], dtype = np.float64)
+# Q = np.array([[0.3, 0.0], [0, 0.2]], dtype = np.float64)
+# # M = np.array([[0.2, 0.1], [0.18, 0.2]], dtype = np.float64)
+# R = np.array([[0.1, 0.3], [0.18, 0.5]], dtype = np.float64)
 
-model = WirsherModelParameters(SIGMA, Q, R)
+# E11, E12, E21, E22, Q11, Q12, Q21, Q22, R11, R12, R21, R22 = 0.4, 0.0, 0.0, 0.35, 0.3, 0.0, 0.0, 0.2, 0.1, 0.3, 0.12, 0.5
+
+# model = ModelParameters(E11, E12, E21, E22, Q11, Q12, Q21, Q22, R11, R12, R21, R22)
 market = MarketParameters(K=karr, T=T, S=S_val, r=r_val, C=carr, types=types, iv = iv)
+model = ModelParameters(alpha, v, beta, rho)
 
 if __name__ == "__main__":
-# print(vol_sabr(model=model, market=market))
+    print(vol_sabr(model=model, market=market))
     # print(jacobian_sabr(model=model, market=market))
-    print(get_iv_wishart(model = model, market = market))
+    # print(get_iv_wishart(model = model, market = market))
+    # print(Gamma(model = model, market = market))
+    # print(Theta(model = model, market = market))
+    # print(jacobian_wishart(model = model, market = market))
