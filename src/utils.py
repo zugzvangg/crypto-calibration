@@ -84,14 +84,22 @@ def get_implied_volatility(
         vol = vol - dv
     return vol
 
-def process_data(data):
+def process_data(data, granularity: int = 5):
+    """
+    Args:
+        data (pd.DataFrame): dataframe of .h5 format to preprocess.
+        granularity (int): In which granularity in minutes to resample.
+    """
     # only options
-    df = data.copy()
-    df = df[(df["instrument"].str.endswith("C")) | (df["instrument"].str.endswith("P"))].sort_values("dt")
+    time_granularity = f"{granularity}min"
+    df = data[(data["instrument"].str.endswith("C")) | (data["instrument"].str.endswith("P"))].copy().set_index("dt")
+    df = df.groupby("instrument").resample(time_granularity)["price"].ohlc().ffill().reset_index()[["instrument", "dt", "close"]]
+    df = df.rename(columns = {"close": "price"})
     df["type"] = np.where(df["instrument"].str.endswith("C"), "call", "put")
     
-    perpetuals = data[data["instrument"].str.endswith("PERPETUAL")][["dt", "price"]].copy()
-    perpetuals = perpetuals.rename(columns = {"price": "underlying_price"}).sort_values("dt")
+    perpetual = data[data["instrument"] == "ETH-PERPETUAL"][["dt", "price"]].copy().set_index("dt")
+    perpetual = perpetual.resample(time_granularity).agg({'price': 'mean'}).ffill().reset_index()
+    perpetual = perpetual.rename(columns = {"price": "underlying_price"})
     
     def get_strike(x):
         return int(x.split("-")[2])
@@ -136,13 +144,7 @@ def process_data(data):
         exp_date = datetime.datetime(year, month, day)
         return unix_time_millis(exp_date)
     
-    df["dt"] = pd.to_datetime(df["dt"])
-    perpetuals["dt"] = pd.to_datetime(perpetuals["dt"])
-    
-    df = pd.merge_asof(df, perpetuals, on="dt",
-                       tolerance=pd.Timedelta('7 minutes'),
-                       direction='nearest',)
-    
+    df = df.merge(perpetual, on="dt")
     df["timestamp"] = df["dt"].apply(unix_time_millis)
     df["expiration"] = df["instrument"].apply(get_normal_date)
     df = df.rename(columns = {"price": "mark_price"})
