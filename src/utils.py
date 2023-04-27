@@ -3,6 +3,7 @@ from scipy import stats as sps
 import numpy as np
 import datetime
 import numba as nb
+import math
 
 
 def get_tick(df: pd.DataFrame, timestamp: int = None):
@@ -43,7 +44,7 @@ def get_tick(df: pd.DataFrame, timestamp: int = None):
 
 
 # Newton-Raphsen
-nb.njit
+# nb.njit
 
 
 def get_implied_volatility(
@@ -87,6 +88,21 @@ def get_implied_volatility(
         vol = vol - dv
     return vol
 
+def cdf(x) -> float:
+    return (1.0 + math.erf(x / np.sqrt(2.0))) / 2.0
+
+def get_price_bsm(
+    option_type: str,
+    sigma: float,
+    K: float,
+    T: float,
+    F: float,
+    r: float = 0.0,
+    )->float:
+    d1 = (np.log(F/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    p = 1 if option_type else -1
+    return p*F*cdf(p*d1) - p*K*np.exp(-r*T)*cdf(p*d2)
 
 def process_data(data, granularity: int = 5) -> pd.DataFrame:
     """

@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from src.utils import get_tick, get_implied_volatility
+from src.utils import get_tick, get_implied_volatility, get_price_bsm
 from typing import Final, Tuple
 from src.levenberg_marquardt import LevenbergMarquardt
 import math
@@ -90,7 +90,6 @@ _tmp_values_vol_sabr = {
 
 
 # @nb.njit(locals=_tmp_values_vol_sabr)
-# @nb.njit
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
@@ -107,6 +106,7 @@ def vol_sabr(
     gammas = np.zeros(n, dtype=np.float64)
     dc_drho = np.zeros(n, dtype=np.float64)
     dc_dv = np.zeros(n, dtype=np.float64)
+    prices = np.zeros(n, dtype=np.float64)
     for index in range(n):
         K = Ks[index]
         x = np.log(f / K)
@@ -128,6 +128,8 @@ def vol_sabr(
             I_B_0 = K ** (beta - 1) * alpha
             dI_B_0_dF = 0.0
             B_alpha = K ** (beta - 1)
+            d2I_B_0_d2f = 0.0
+            d2I_B_0_dalpha_df = 0.0
 
         elif v == 0.0:
             I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + f ** (1 - beta))
@@ -141,7 +143,22 @@ def vol_sabr(
                 / (f**2 * (K ** (1 - beta) - f ** (1 - beta)) ** 2)
             )
             B_alpha = (beta - 1) * x / (K ** (1 - beta) - f ** (1 - beta))
-
+            d2I_B_0_d2f = (
+                alpha
+                * (beta - 1)
+                * (
+                    -(f**4) * (K ** (1 - beta) - f ** (1 - beta)) ** 2
+                    + f ** (5 - beta)
+                    * (K ** (1 - beta) - f ** (1 - beta))
+                    * (beta - 1)
+                    * (x * (beta - 1) + x - 2)
+                    + 2 * f ** (6 - 2 * beta) * x * (beta - 1) ** 2
+                )
+                / (f**6 * (K ** (1 - beta) - f ** (1 - beta)) ** 3)
+            )
+            d2I_B_0_dalpha_df = -(f ** (1 - beta)) * x * (1 - beta) ** 2 / (
+                f * (-(K ** (1 - beta)) + f ** (1 - beta)) ** 2
+            ) + (1 - beta) / (f * (-(K ** (1 - beta)) + f ** (1 - beta)))
         else:
             if beta == 1.0:
                 z = v * x / alpha
@@ -157,6 +174,49 @@ def vol_sabr(
                     * x
                     * z
                     / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
+                )
+                d2I_B_0_d2f = (
+                    v
+                    * (
+                        -(sqrt**3)
+                        * alpha**2
+                        * np.log((-sqrt + rho - z) / (rho - 1)) ** 2
+                        + sqrt**2
+                        * alpha
+                        * v
+                        * x
+                        * np.log((-sqrt + rho - z) / (rho - 1))
+                        - 2
+                        * sqrt**2
+                        * alpha
+                        * v
+                        * np.log((-sqrt + rho - z) / (rho - 1))
+                        + 2 * sqrt * v**2 * x
+                        - rho * v**2 * x * np.log((-sqrt + rho - z) / (rho - 1))
+                        + v**2 * x * z * np.log((-sqrt + rho - z) / (rho - 1))
+                    )
+                    / (
+                        sqrt**3
+                        * alpha**2
+                        * f**2
+                        * np.log((-sqrt + rho - z) / (rho - 1)) ** 3
+                    )
+                )
+                d2I_B_0_dalpha_df = (
+                    v
+                    * (
+                        sqrt**2 * alpha * z * np.log((-sqrt + rho - z) / (rho - 1))
+                        + sqrt**2 * v * x * np.log((-sqrt + rho - z) / (rho - 1))
+                        - 2 * sqrt * v * x * z
+                        + rho * v * x * z * np.log((-sqrt + rho - z) / (rho - 1))
+                        - v * x * z**2 * np.log((-sqrt + rho - z) / (rho - 1))
+                    )
+                    / (
+                        sqrt**3
+                        * alpha**2
+                        * f
+                        * np.log((-sqrt + rho - z) / (rho - 1)) ** 3
+                    )
                 )
 
             elif beta < 1.0:
@@ -185,6 +245,76 @@ def vol_sabr(
                     * x
                     * z
                     / (alpha * sqrt * np.log((rho - z - sqrt) / (rho - 1)) ** 2)
+                )
+                d2I_B_0_d2f = (
+                    v
+                    * (
+                        -(sqrt**3)
+                        * alpha**2
+                        * f
+                        * (sqrt - rho + z)
+                        * np.log((-sqrt + rho - z) / (rho - 1)) ** 2
+                        - 2
+                        * sqrt**2
+                        * alpha
+                        * f ** (2 - beta)
+                        * v
+                        * (sqrt - rho + z)
+                        * np.log((-sqrt + rho - z) / (rho - 1))
+                        + sqrt
+                        * f ** (3 - 2 * beta)
+                        * v**2
+                        * x
+                        * (sqrt - rho + z)
+                        * np.log((-sqrt + rho - z) / (rho - 1))
+                        + 2 * sqrt * f ** (3 - 2 * beta) * v**2 * x * (sqrt - rho + z)
+                        + f
+                        * v
+                        * x
+                        * (
+                            sqrt**3 * alpha * beta * f ** (1 - beta)
+                            + sqrt**2
+                            * (
+                                alpha * f ** (1 - beta) * (-rho * (beta - 1) - rho + z)
+                                - v
+                                * (
+                                    f ** (1 - beta)
+                                    * (-(K ** (1 - beta)) + f ** (1 - beta))
+                                    + f ** (2 - 2 * beta)
+                                )
+                            )
+                            + f ** (2 - 2 * beta) * v * (rho - z) ** 2
+                        )
+                        * np.log((-sqrt + rho - z) / (rho - 1))
+                    )
+                    / (
+                        sqrt**3
+                        * alpha**2
+                        * f**3
+                        * (sqrt - rho + z)
+                        * np.log((-sqrt + rho - z) / (rho - 1)) ** 3
+                    )
+                )
+                d2I_B_0_dalpha_df = (
+                    v
+                    * (
+                        sqrt**2
+                        * alpha
+                        * f**beta
+                        * z
+                        * np.log((-sqrt + rho - z) / (rho - 1))
+                        + sqrt**2 * f * v * x * np.log((-sqrt + rho - z) / (rho - 1))
+                        - 2 * sqrt * f * v * x * z
+                        + f * rho * v * x * z * np.log((-sqrt + rho - z) / (rho - 1))
+                        - f * v * x * z**2 * np.log((-sqrt + rho - z) / (rho - 1))
+                    )
+                    / (
+                        sqrt**3
+                        * alpha**2
+                        * f
+                        * f**beta
+                        * np.log((-sqrt + rho - z) / (rho - 1)) ** 3
+                    )
                 )
 
             I_B_0 = v * x / (np.log((sqrt + z - rho) / (1 - rho)))
@@ -220,6 +350,7 @@ def vol_sabr(
         dc_drho[index] = vega_bsm * dsigma_drho
         dc_dv[index] = vega_bsm * dsigma_dv
         sigmas[index] = sigma
+        prices[index] = get_price_bsm(types[index], sigma, K, T, f, market.r)
 
         # computing gamma
         dI_H_1_dalpha = (
@@ -238,8 +369,13 @@ def vol_sabr(
             8 * f**2
         )
 
-        #TODO: calculate correctly
-        # d2I_B_0_d2f, d2I_B_0_dalpha_df, d2I_H_1_dalpha_df = 10**(-5), 10**(-5), 10**(-5)
+        d2I_H_1_dalpha_df = alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 * (
+            beta - 1
+        ) / (12 * f) + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) * (
+            beta / 2 - 1 / 2
+        ) / (
+            4 * f
+        )
 
         d2_sigma_df2 = d2I_B_0_d2f + T * (
             d2I_B_0_d2f * I_H_1 + d2I_H_1_d2f * I_B_0 + 2 * dI_B_0_dF * dI_H_1_dF
@@ -252,6 +388,7 @@ def vol_sabr(
             + dI_H_1_dalpha * dI_B_0_dF * T
         )
 
+        # last_gamma_component -- component with all second order derivatives od sigma_B
         last_gamma_component_0 = (
             d2_sigma_df2
             + d2_sigma_dalpha_df * rho * v / f**beta
@@ -266,7 +403,7 @@ def vol_sabr(
             + last_gamma_component
         )
 
-    return sigmas, deltas, vegas, gammas, dc_drho, dc_dv
+    return sigmas, prices, deltas, vegas, gammas, dc_drho, dc_dv
 
 
 _tmp_values_jacobian_sabr = {
@@ -727,7 +864,7 @@ def calibrate_sabr(
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
             J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
-        iv, _, _, _, _, _ = vol_sabr(model=model_parameters, market=market)
+        iv, _, _, _, _, _, _ = vol_sabr(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = iv - market.iv
@@ -756,9 +893,11 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols, deltas, vegas, gammas, dc_drho, dc_dv = vol_sabr(
+    final_vols, prices, deltas, vegas, gammas, dc_drho, dc_dv = vol_sabr(
         model=final_params, market=market
     )
+
+
     tick["delta"] = deltas
     tick["vega"] = vegas
     tick["gamma"] = gammas
@@ -767,6 +906,8 @@ def calibrate_sabr(
     tick["calibrated_iv"] = final_vols
     tick["rho"] = final_params.rho
     tick["volvol"] = final_params.v
+    tick["calibrated_mark_price"] = prices
+
     result = tick[
         [
             "type",
@@ -775,12 +916,13 @@ def calibrate_sabr(
             "underlying_price",
             "iv",
             "calibrated_iv",
+            "calibrated_mark_price",
             "delta",
             "vega",
             "gamma",
             "dc_drho",
             "dc_dv",
-            "mark_price",
+            "mark_price_usd",
             "rho",
             "volvol",
         ]
