@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from src.utils import get_tick, get_implied_volatility, get_price_bsm, cdf, pdf
+from src.utils import get_tick, get_implied_volatility, get_price_bsm #cdf, pdf
 from typing import Final, Tuple
 from src.levenberg_marquardt import LevenbergMarquardt
 import math
@@ -90,6 +90,7 @@ _tmp_values_vol_sabr = {
 
 
 # @nb.njit(locals=_tmp_values_vol_sabr)
+@nb.njit
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
@@ -315,6 +316,14 @@ def vol_sabr(
             dsigma_drhos[index],
         )
 
+        def cdf(x) -> float:
+            return (1.0 + math.erf(x / np.sqrt(2.0))) / 2.0
+
+        def pdf(x):
+            probability = 1.0 / np.sqrt(2 * np.pi)
+            probability *= np.exp(-0.5 * x**2)
+            return probability
+
         vega_bsm = f * np.sqrt(T) * pdf(d1)
         delta_bsm = cdf(d1)
         gamma_bsm = pdf(d1) / (f * sigma * np.sqrt(T))
@@ -332,6 +341,20 @@ def vol_sabr(
         kega_bsm = kega_bsm if types[index] else kega_bsm + 1.0
         dc_dK[index] = kega_bsm + vega_bsm * dsigma_dK
         sigmas[index] = sigma
+
+        def get_price_bsm(
+            option_type: str,
+            sigma: float,
+            K: float,
+            T: float,
+            F: float,
+            r: float = 0.0,
+            )->float:
+            d1 = (np.log(F/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+            d2 = d1 - sigma * np.sqrt(T)
+            p = 1 if option_type else -1
+            return p*F*cdf(p*d1) - p*K*np.exp(-r*T)*cdf(p*d2)
+        
         prices[index] = get_price_bsm(types[index], sigma, K, T, f, market.r)
 
         # computing gamma
