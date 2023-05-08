@@ -95,32 +95,31 @@ def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
 ) -> np.array:
-    f, Ks, T, types = market.F, market.K, market.T, market.types
+    F, Ks, T = market.F, market.K, market.T
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
+    assert beta<=1.0, "Beta should be from [0,1]"
     n = len(Ks)
     sigmas = np.zeros(n, dtype=np.float64)
     for index in range(n):
         K = Ks[index]
-        x = np.log(f / K)
+        x = np.log(F / K)
         I_H_1 = (
-            alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
-            + alpha * beta * rho * v * (K * f) ** (beta / 2 + -1 / 2) / 4
+            alpha**2 * (K * F) ** (beta - 1) * (1 - beta) ** 2 / 24
+            + alpha * beta * rho * v * (K * F) ** (beta / 2 + -1 / 2) / 4
             + v**2 * (2 - 3 * rho**2) / 24
         )
         if x == 0.0:
             I_B_0 = K ** (beta - 1) * alpha
         elif v == 0.0:
-            I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + f ** (1 - beta))
+            I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + F ** (1 - beta))
         else:
             if beta == 1.0:
                 z = v * x / alpha
-                sqrt = np.sqrt(1 - 2 * rho * z + z**2)
-                epsilon = np.log((-sqrt + rho - z) / (rho - 1))
             elif beta < 1.0:
-                z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
-                sqrt = np.sqrt(1 - 2 * rho * z + z**2)
-                epsilon = np.log((-sqrt + rho - z) / (rho - 1))
-            I_B_0 = v * x / (epsilon)
+                z = v * (F ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
+            sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+            epsilon = np.log((-sqrt + rho - z) / (rho - 1))
+            I_B_0 = v * x / epsilon
 
         sigma = I_B_0 * (1 + I_H_1 * T)
         sigmas[index] = sigma
@@ -383,9 +382,9 @@ def get_rega(
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
-    _, _, _, dsigma_drhos = jacobian_sabr(model=model, market=market)
-    dsigma_drho = dsigma_drhos[0]
-    return vega_bsm * dsigma_drho
+    _, dsigma_vs, _, _ = jacobian_sabr(model=model, market=market)
+    dsigma_v = dsigma_vs[0]
+    return vega_bsm * dsigma_v
 
 
 # @nb.njit()
@@ -409,21 +408,18 @@ def get_sega(
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
-    _, dsigma_dv, _, _ = jacobian_sabr(model=model, market=market)
-    dsigma_dv = dsigma_dv[0]
-    return vega_bsm * dsigma_dv
+    _, _, _, dsigma_dhos = jacobian_sabr(model=model, market=market)
+    dsigma_dho = dsigma_dhos[0]
+    return vega_bsm * dsigma_dho
 
 
 # @nb.njit()
 def get_dsigma_dK(
     model: ModelParameters,
-    option_type: bool,
-    sigma: float,
     K: float,
     T: float,
     F: float,
-    r: float = 0.0,
-):
+)->float:
     x = np.log(F / K)
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     if x == 0.0:
