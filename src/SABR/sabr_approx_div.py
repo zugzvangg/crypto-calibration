@@ -90,7 +90,7 @@ _tmp_values_vol_sabr = {
 
 
 # @nb.njit(locals=_tmp_values_vol_sabr)
-@nb.njit
+@nb.njit()
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
@@ -1213,7 +1213,7 @@ def calibrate_sabr(
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
             J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
-        iv, _, _, _, _, _, _, _ = vol_sabr(model=model_parameters, market=market)
+        iv = vol_sabr(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = iv - market.iv
@@ -1242,20 +1242,20 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols, prices, deltas, vegas, gammas, dc_drho, dc_dv, dc_dK = vol_sabr(
+    final_vols = vol_sabr(
         model=final_params, market=market
     )
 
-    tick["delta"] = deltas
-    tick["vega"] = vegas
-    tick["gamma"] = gammas
-    tick["dc_drho"] = dc_drho
-    tick["dc_dv"] = dc_dv
-    tick["dc_dK"] = dc_dK
+    # tick["delta"] = deltas
+    # tick["vega"] = vegas
+    # tick["gamma"] = gammas
+    # tick["dc_drho"] = dc_drho
+    # tick["dc_dv"] = dc_dv
+    # tick["dc_dK"] = dc_dK
     tick["calibrated_iv"] = final_vols
     tick["rho"] = final_params.rho
     tick["volvol"] = final_params.v
-    tick["calibrated_mark_price"] = prices
+    # tick["calibrated_mark_price"] = prices
 
     result = tick[
         [
