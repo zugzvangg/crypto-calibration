@@ -387,12 +387,12 @@ def vol_sabr(
             d2I_B_0_d2f * I_H_1 + d2I_H_1_d2f * I_B_0 + 2 * dI_B_0_dF * dI_H_1_dF
         )
 
-        d2_sigma_dalpha_df = (
-            d2I_B_0_dalpha_df * (1 + I_H_1 * T)
-            + B_alpha * dI_H_1_dF * T
-            + d2I_H_1_dalpha_df * I_B_0 * T
-            + dI_H_1_dalpha * dI_B_0_dF * T
-        )
+        # d2_sigma_dalpha_df = (
+        #     d2I_B_0_dalpha_df * (1 + I_H_1 * T)
+        #     + B_alpha * dI_H_1_dF * T
+        #     + d2I_H_1_dalpha_df * I_B_0 * T
+        #     + dI_H_1_dalpha * dI_B_0_dF * T
+        # )
 
         # last_gamma_component -- component with all second order derivatives od sigma_B
         last_gamma_component_0 = (
@@ -759,8 +759,112 @@ def get_dsigma_dK(
 # ==================================================================
 
 
-def get_d2sigma_df2():
-    pass
+def get_d2sigma_df2(
+    model: ModelParameters,
+    option_type: bool,
+    sigma: float,
+    K: float,
+    T: float,
+    F: float,
+    r: float = 0.0,
+) -> float:
+    x = np.log(F / K)
+    alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
+    if x == 0.0:
+        d2I_B_0_dalpha_df = 0.0
+        B_alpha = K ** (beta - 1)
+        I_B_0 = K ** (beta - 1) * alpha
+        dI_B_0_dF = 0.0
+    elif v == 0.0:
+        d2I_B_0_dalpha_df = -(F ** (1 - beta)) * x * (1 - beta) ** 2 / (
+            F * (-(K ** (1 - beta)) + F ** (1 - beta)) ** 2
+        ) + (1 - beta) / (F * (-(K ** (1 - beta)) + F ** (1 - beta)))
+        B_alpha = (beta - 1) * x / (K ** (1 - beta) - F ** (1 - beta))
+        I_B_0 = alpha * (1 - beta) * x / (-(K ** (1 - beta)) + F ** (1 - beta))
+        dI_B_0_dF = (
+            alpha
+            * (beta - 1)
+            * (
+                F * (K ** (1 - beta) - F ** (1 - beta))
+                - F ** (2 - beta) * (beta - 1) * x
+            )
+            / (F**2 * (K ** (1 - beta) - F ** (1 - beta)) ** 2)
+        )
+    else:
+        if beta == 1.0:
+            z = v * x / alpha
+            sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+            epsilon = np.log((-sqrt + rho - z) / (rho - 1))
+            d2I_B_0_dalpha_df = (
+                v
+                * (
+                    sqrt**2 * alpha * z * epsilon
+                    + sqrt**2 * v * x * epsilon
+                    - 2 * sqrt * v * x * z
+                    + rho * v * x * z * epsilon
+                    - v * x * z**2 * epsilon
+                )
+                / (sqrt**3 * alpha**2 * F * epsilon**3)
+            )
+            B_alpha = v * x * z / (alpha * sqrt * epsilon**2)
+            dI_B_0_dF = (
+                v * (alpha * sqrt * epsilon - v * x) / (alpha * F * sqrt * epsilon**2)
+            )
+        elif beta < 1.0:
+            z = v * (F ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
+            sqrt = np.sqrt(1 - 2 * rho * z + z**2)
+            epsilon = np.log((-sqrt + rho - z) / (rho - 1))
+            d2I_B_0_dalpha_df = (
+                    v
+                    * (
+                        sqrt**2 * alpha * F**beta * z * epsilon
+                        + sqrt**2 * F * v * x * epsilon
+                        - 2 * sqrt * F * v * x * z
+                        + F * rho * v * x * z * epsilon
+                        - F * v * x * z**2 * epsilon
+                    )
+                    / (sqrt**3 * alpha**2 * F * F**beta * epsilon**3)
+                )
+            B_alpha = v * x * z / (alpha * sqrt * epsilon**2)
+            dI_B_0_dF = (
+                v
+                * (
+                    alpha * F * (-rho + z + sqrt) * sqrt * epsilon
+                    + F ** (2 - beta) * v * x * (rho - z - sqrt)
+                )
+                / (alpha * F**2 * (-rho + z + sqrt) * sqrt * epsilon**2)
+            )
+        I_B_0 = v * x / (epsilon)
+            
+    I_H_1 = (
+        alpha**2 * (K * F) ** (beta - 1) * (1 - beta) ** 2 / 24
+        + alpha * beta * rho * v * (K * F) ** (beta / 2 + -1 / 2) / 4
+        + v**2 * (2 - 3 * rho**2) / 24
+    )
+    dI_H_1_dF = alpha**2 * (K * F) ** (beta - 1) * (1 - beta) ** 2 * (beta - 1) / (
+        24 * F
+    ) + alpha * beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) * (beta / 2 - 1 / 2) / (
+        4 * F
+    )
+    dI_H_1_dalpha = (
+            alpha * (K * F) ** (beta - 1) * (1 - beta) ** 2 / 12
+            + beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) / 4
+        )
+    d2I_H_1_dalpha_df = alpha * (K * F) ** (beta - 1) * (1 - beta) ** 2 * (
+            beta - 1
+        ) / (12 * F) + beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) * (
+            beta / 2 - 1 / 2
+        ) / (
+            4 * F
+        )
+
+    d2_sigma_dalpha_df = (
+        d2I_B_0_dalpha_df * (1 + I_H_1 * T)
+        + B_alpha * dI_H_1_dF * T
+        + d2I_H_1_dalpha_df * I_B_0 * T
+        + dI_H_1_dalpha * dI_B_0_dF * T
+    )
+    return d2_sigma_dalpha_df
 
 
 def get_d2_sigma_dalpha_df():
