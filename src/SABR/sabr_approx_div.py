@@ -90,7 +90,7 @@ _tmp_values_vol_sabr = {
 
 
 # @nb.njit(locals=_tmp_values_vol_sabr)
-@nb.njit()
+# @nb.njit()
 def vol_sabr(
     model: ModelParameters,
     market: MarketParameters,
@@ -130,16 +130,19 @@ def vol_sabr(
 # ==================================================================
 # =================== Black-Sholes greeks and tools ================
 # ==================================================================
+# @nb.njit()
 def cdf(x: float) -> float:
     return (1.0 + math.erf(x / np.sqrt(2.0))) / 2.0
 
 
+# @nb.njit()
 def pdf(x: float) -> float:
     probability = 1.0 / np.sqrt(2 * np.pi)
     probability *= np.exp(-0.5 * x**2)
     return probability
 
 
+# @nb.njit()
 def get_implied_volatility(
     option_type: bool,
     C: float,
@@ -180,6 +183,7 @@ def get_implied_volatility(
     return vol
 
 
+# @nb.njit()
 def get_delta_bsm(
     option_type: str,
     sigma: float,
@@ -192,6 +196,7 @@ def get_delta_bsm(
     return cdf(d1) if option_type else cdf(d1) - 1.0
 
 
+# @nb.njit()
 def get_vega_bsm(
     sigma: float,
     K: float,
@@ -203,6 +208,7 @@ def get_vega_bsm(
     return F * np.sqrt(T) * pdf(d1)
 
 
+# @nb.njit()
 def get_gamma_bsm(
     sigma: float,
     K: float,
@@ -214,6 +220,7 @@ def get_gamma_bsm(
     return pdf(d1) / (F * sigma * np.sqrt(T))
 
 
+# @nb.njit()
 def get_price_bsm(
     option_type: str,
     sigma: float,
@@ -228,10 +235,12 @@ def get_price_bsm(
     return p * F * cdf(p * d1) - p * K * np.exp(-r * T) * cdf(p * d2)
 
 
+# @nb.njit()
 def get_vanna_bsm():
     pass
 
 
+# @nb.njit()
 def get_d1(
     sigma: float,
     K: float,
@@ -251,6 +260,7 @@ def get_d1(
 # ==================================================================
 # ===================== SABR greeks ================================
 # ==================================================================
+# @nb.njit()
 def get_delta(
     model: ModelParameters,
     option_type: bool,
@@ -273,8 +283,6 @@ def get_delta(
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
-    print(market.F, market.r, market.T, market.K, market.C, market.iv, market.types)
-
     dsigma_dalphas, _, _, _ = jacobian_sabr(model=model, market=market)
 
     dsigma_dalpha = dsigma_dalphas[0]
@@ -282,6 +290,7 @@ def get_delta(
     return delta_bsm + vega_bsm * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
 
 
+# @nb.njit()
 def get_gamma(
     model: ModelParameters,
     option_type: bool,
@@ -325,6 +334,7 @@ def get_gamma(
     )
 
 
+# @nb.njit()
 def get_vega(
     model: ModelParameters,
     option_type: bool,
@@ -352,6 +362,7 @@ def get_vega(
     return vega_bsm * (dsigma_dalpha + dsigma_df * rho * F**beta / v)
 
 
+# @nb.njit()
 def get_rega(
     model: ModelParameters,
     option_type: bool,
@@ -377,6 +388,7 @@ def get_rega(
     return vega_bsm * dsigma_drho
 
 
+# @nb.njit()
 def get_sega(
     model: ModelParameters,
     option_type: bool,
@@ -402,6 +414,7 @@ def get_sega(
     return vega_bsm * dsigma_dv
 
 
+# @nb.njit()
 def get_dsigma_dK(
     model: ModelParameters,
     option_type: bool,
@@ -475,6 +488,7 @@ def get_dsigma_dK(
 # ==================================================================
 
 
+# @nb.njit()
 def get_d2_sigma_dalpha_df(
     model: ModelParameters,
     option_type: bool,
@@ -579,6 +593,7 @@ def get_d2_sigma_dalpha_df(
     return d2_sigma_dalpha_df2
 
 
+# @nb.njit()
 def get_d2_sigma_df2(
     model: ModelParameters,
     option_type: bool,
@@ -714,6 +729,7 @@ def get_d2_sigma_df2(
     return d2_sigma_df2
 
 
+@nb.njit()
 def get_dsigma_df(
     model: ModelParameters,
     K: float,
@@ -812,12 +828,13 @@ _tmp_values_jacobian_sabr = {
 }
 
 
-@nb.njit(locals=_tmp_values_jacobian_sabr)
+# @nb.njit(locals=_tmp_values_jacobian_sabr)
+# @nb.njit()
 def jacobian_sabr(
     model: ModelParameters,
     market: MarketParameters,
 ):
-    f, Ks, T = market.S, market.K, market.T
+    F, Ks, T = market.F, market.K, market.T
     n = len(Ks)
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     ddalpha = np.zeros(n, dtype=np.float64)
@@ -827,34 +844,34 @@ def jacobian_sabr(
     # need a cycle cause may be different formula for different strikes
     for index in range(n):
         K = Ks[index]
-        x = np.log(f / K)
+        x = np.log(F / K)
         I_H = (
-            alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 24
-            + alpha * beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+            alpha**2 * (K * F) ** (beta - 1) * (1 - beta) ** 2 / 24
+            + alpha * beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) / 4
             + v**2 * (2 - 3 * rho**2) / 24
         )
         dI_H_1_dalpha = (
-            alpha * (K * f) ** (beta - 1) * (1 - beta) ** 2 / 12
-            + beta * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+            alpha * (K * F) ** (beta - 1) * (1 - beta) ** 2 / 12
+            + beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) / 4
         )
         dI_H_beta = (
-            alpha**2 * (K * f) ** (beta - 1) * (1 - beta) ** 2 * np.log(K * f) / 24
-            + alpha**2 * (K * f) ** (beta - 1) * (2 * beta - 2) / 24
+            alpha**2 * (K * F) ** (beta - 1) * (1 - beta) ** 2 * np.log(K * F) / 24
+            + alpha**2 * (K * F) ** (beta - 1) * (2 * beta - 2) / 24
             + alpha
             * beta
             * rho
             * v
-            * (K * f) ** (beta / 2 + -1 / 2)
-            * np.log(K * f)
+            * (K * F) ** (beta / 2 + -1 / 2)
+            * np.log(K * F)
             / 8
-            + alpha * rho * v * (K * f) ** (beta / 2 - 1 / 2) / 4
+            + alpha * rho * v * (K * F) ** (beta / 2 - 1 / 2) / 4
         )
         dI_h_v = (
-            alpha * beta * rho * (K * f) ** (beta / 2 + -1 / 2) / 4
+            alpha * beta * rho * (K * F) ** (beta / 2 + -1 / 2) / 4
             + v * (2 - 3 * rho**2) / 12
         )
         dI_H_rho = (
-            alpha * beta * v * (K * f) ** (beta / 2 + -1 / 2) / 4 - rho * v**2 / 4
+            alpha * beta * v * (K * F) ** (beta / 2 + -1 / 2) / 4 - rho * v**2 / 4
         )
 
         if x == 0.0:
@@ -865,18 +882,18 @@ def jacobian_sabr(
             B_rho = 0.0
 
         elif v == 0.0:
-            I_B = alpha * (1 - beta) * x / (f ** (1 - beta) - (K ** (1 - beta)))
-            B_alpha = (beta - 1) * x / (K ** (1 - beta) - f ** (1 - beta))
+            I_B = alpha * (1 - beta) * x / (F ** (1 - beta) - (K ** (1 - beta)))
+            B_alpha = (beta - 1) * x / (K ** (1 - beta) - F ** (1 - beta))
             B_beta = (
                 alpha
                 * (
                     K ** (1 - beta)
-                    - f ** (1 - beta)
+                    - F ** (1 - beta)
                     + (beta - 1)
-                    * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
+                    * (K ** (1 - beta) * np.log(K) - F ** (1 - beta) * np.log(F))
                 )
                 * x
-                / (K ** (1 - beta) - f ** (1 - beta)) ** 2
+                / (K ** (1 - beta) - F ** (1 - beta)) ** 2
             )
             B_v = 0.0
             B_rho = 0.0
@@ -897,7 +914,7 @@ def jacobian_sabr(
             )
 
         elif beta < 1.0:
-            z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
+            z = v * (F ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
             sqrt = np.sqrt(1 - 2 * rho * z + z**2)
             epsilon = np.log((-sqrt + rho - z) / (rho - 1))
             # I_B = v * (-(K ** (1 - beta)) + f ** (1 - beta)) / (alpha * (1 - beta))
@@ -907,17 +924,17 @@ def jacobian_sabr(
                 v
                 * x
                 * (
-                    K * f**beta * v * np.log(K)
-                    + K**beta * alpha * f**beta * z
-                    - K**beta * f * v * np.log(f)
+                    K * F**beta * v * np.log(K)
+                    + K**beta * alpha * F**beta * z
+                    - K**beta * F * v * np.log(F)
                 )
-                / (K**beta * sqrt * alpha * f**beta * (beta - 1) * epsilon**2)
+                / (K**beta * sqrt * alpha * F**beta * (beta - 1) * epsilon**2)
             )
             B_v = (
                 x
                 * (
                     sqrt * alpha * (beta - 1) * epsilon
-                    - v * (K ** (1 - beta) - f ** (1 - beta))
+                    - v * (K ** (1 - beta) - F ** (1 - beta))
                 )
                 / (sqrt * alpha * (beta - 1) * epsilon**2)
             )
@@ -1242,9 +1259,7 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols = vol_sabr(
-        model=final_params, market=market
-    )
+    final_vols = vol_sabr(model=final_params, market=market)
 
     # tick["delta"] = deltas
     # tick["vega"] = vegas
