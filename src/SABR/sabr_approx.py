@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from src.utils import get_tick, get_implied_volatility, get_price_bsm #cdf, pdf
+from src.utils import get_tick, get_implied_volatility, get_price_bsm  # cdf, pdf
 from typing import Final, Tuple
 from src.levenberg_marquardt import LevenbergMarquardt
 import math
@@ -349,12 +349,12 @@ def vol_sabr(
             T: float,
             F: float,
             r: float = 0.0,
-            )->float:
-            d1 = (np.log(F/K) + (r + sigma**2/2)*T) / (sigma*np.sqrt(T))
+        ) -> float:
+            d1 = (np.log(F / K) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
             d2 = d1 - sigma * np.sqrt(T)
             p = 1 if option_type else -1
-            return p*F*cdf(p*d1) - p*K*np.exp(-r*T)*cdf(p*d2)
-        
+            return p * F * cdf(p * d1) - p * K * np.exp(-r * T) * cdf(p * d2)
+
         prices[index] = get_price_bsm(types[index], sigma, K, T, f, market.r)
 
         # computing gamma
@@ -518,7 +518,7 @@ def jacobian_sabr(
             z = v * x / alpha
             sqrt = np.sqrt(1 - 2 * rho * z + z**2)
             epsilon = np.log((-sqrt + rho - z) / (rho - 1))
-            I_B = v * x / (epsilon)
+            I_B = v * x / epsilon
             B_alpha = v * x * z / (alpha * sqrt * epsilon**2)
             B_beta = 0.0
             B_v = x * (alpha * sqrt * epsilon - v * x) / (alpha * sqrt * epsilon**2)
@@ -533,49 +533,33 @@ def jacobian_sabr(
             z = v * (f ** (1 - beta) - K ** (1 - beta)) / (alpha * (1 - beta))
             sqrt = np.sqrt(1 - 2 * rho * z + z**2)
             epsilon = np.log((-sqrt + rho - z) / (rho - 1))
-            I_B = v * (-(K ** (1 - beta)) + f ** (1 - beta)) / (alpha * (1 - beta))
+            # I_B = v * (-(K ** (1 - beta)) + f ** (1 - beta)) / (alpha * (1 - beta))
+            I_B = v * x / epsilon
             B_alpha = v * x * z / (alpha * sqrt * epsilon**2)
             B_beta = (
-                -v
+                v
                 * x
                 * (
-                    z / (1 - beta)
-                    + (
-                        -rho * z / (1 - beta)
-                        + z**2 / (1 - beta)
-                        - rho
-                        * v
-                        * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
-                        / (alpha * (1 - beta))
-                        + v
-                        * z
-                        * (
-                            2 * K ** (1 - beta) * np.log(K)
-                            - 2 * f ** (1 - beta) * np.log(f)
-                        )
-                        / (2 * alpha * (1 - beta))
-                    )
-                    / sqrt
-                    + v
-                    * (K ** (1 - beta) * np.log(K) - f ** (1 - beta) * np.log(f))
-                    / (alpha * (1 - beta))
+                    K * f**beta * v * np.log(K)
+                    + K**beta * alpha * f**beta * z
+                    - K**beta * f * v * np.log(f)
                 )
-                / ((-rho + z + sqrt) * epsilon**2)
+                / (K**beta * sqrt * alpha * f**beta * (beta - 1) * epsilon**2)
             )
             B_v = (
-                -v
-                * x
-                * ((-rho * z / v + z**2 / v) / sqrt + z / v)
-                / ((-rho + z + sqrt) * epsilon**2)
-                + x / epsilon
+                x
+                * (
+                    sqrt * alpha * (beta - 1) * epsilon
+                    - v * (K ** (1 - beta) - f ** (1 - beta))
+                )
+                / (sqrt * alpha * (beta - 1) * epsilon**2)
             )
 
             B_rho = (
-                -v
+                v
                 * x
-                * (1 - rho)
-                * ((-z / sqrt - 1) / (1 - rho) + (-rho + z + sqrt) / (1 - rho) ** 2)
-                / ((-rho + z + sqrt) * epsilon**2)
+                * (sqrt * (sqrt - rho + z) + (sqrt + z) * (rho - 1))
+                / (sqrt * (rho - 1) * (sqrt - rho + z) * epsilon**2)
             )
 
         sig_alpha = B_alpha * (1 + I_H * T) + dI_H_1_dalpha * I_B * T
