@@ -167,10 +167,12 @@ def get_implied_volatility(
         d1 = (np.log(F / K) + 0.5 * vol**2 * T) / (vol * np.sqrt(T))
         d2 = d1 - vol * np.sqrt(T)
         D = np.exp(-r * T)
-        if option_type:
+        if option_type == "call":
             price = F * cdf(d1) - K * cdf(d2) * D
-        else:
+        elif option_type == "put":
             price = -F * cdf(-d1) + K * cdf(-d2) * D
+        else:
+            raise ValueError(f"Value {option_type} is invalid")
         Vega = F * np.sqrt(T / np.pi / 2) * np.exp(-0.5 * d1**2)
         PriceError = price - C
         dv = PriceError / Vega
@@ -365,7 +367,7 @@ def get_vega(
     dsigma_df = get_dsigma_df(model, K, T, F)
     return vega_bsm * (dsigma_dalpha + dsigma_df * rho * F**beta / v)
     # no sticky vega variant
-    # return  vega_bsm * dsigma_dalpha
+    # return vega_bsm * dsigma_dalpha
 
 
 # @nb.njit()
@@ -1255,17 +1257,27 @@ def calibrate_sabr(
         calibrated_params[3],
     )
     final_vols = get_vol(model=final_params, market=market)
-
-    # tick["delta"] = deltas
-    # tick["vega"] = vegas
-    # tick["gamma"] = gammas
-    # tick["dc_drho"] = dc_drho
-    # tick["dc_dv"] = dc_dv
-    # tick["dc_dK"] = dc_dK
     tick["calibrated_iv"] = final_vols
+    deltas, vegas, gammas, segas, regas, prices = [], [], [], [], [], []
+    for index, row in tick.iterrows():
+        K = row["strike_price"]
+        op_type = True if row["type"] == "call" else False
+        vol = row["calibrated_iv"]
+        deltas.append(get_delta(final_params, op_type, vol, K, T, S_val))
+        vegas.append(get_vega(final_params, op_type, vol, K, T, S_val))
+        regas.append(get_rega(final_params, op_type, vol, K, T, S_val))
+        segas.append(get_sega(final_params, op_type, vol, K, T, S_val))
+        gammas.append(get_gamma(final_params, op_type, vol, K, T, S_val))
+        prices.append(get_price_bsm(final_params, op_type, vol, K, T, S_val))
+
+    tick["delta"] = deltas
+    tick["vega"] = vegas
+    tick["gamma"] = gammas
+    tick["sega"] = segas
+    tick["rega"] = regas
     tick["rho"] = final_params.rho
     tick["volvol"] = final_params.v
-    # tick["calibrated_mark_price"] = prices
+    tick["calibrated_mark_price"] = prices
 
     result = tick[
         [
@@ -1279,9 +1291,8 @@ def calibrate_sabr(
             "delta",
             "vega",
             "gamma",
-            "dc_drho",
-            "dc_dv",
-            "dc_dK",
+            "sega",
+            "rega",
             "mark_price_usd",
             "rho",
             "volvol",
