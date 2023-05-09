@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from src.utils import get_tick  # get_implied_volatility, get_price_bsm  # cdf, pdf
+from src.utils import get_tick
 from typing import Final, Tuple
 from src.levenberg_marquardt import LevenbergMarquardt
 import math
@@ -66,27 +66,7 @@ class ModelParameters(object):
         self.rho = rho
 
 
-_tmp_values_get_vol = {
-    "f": nb.float64,
-    "Ks": nb.types.Array(nb.float64, 1, "A"),
-    "sigmas": nb.types.Array(nb.float64, 1, "A"),
-    "T": nb.float64,
-    "alpha": nb.float64,
-    "sigma": nb.float64,
-    "beta": nb.float64,
-    "v": nb.float64,
-    "rho": nb.float64,
-    "K": nb.float64,
-    "x": nb.float64,
-    "I_H_1": nb.float64,
-    "I_B_0": nb.float64,
-    "z": nb.float64,
-    "n": nb.int64,
-}
-
-
-# @nb.njit(locals=_tmp_values_get_vol)
-# @nb.njit()
+@nb.njit()
 def get_vol(
     model: ModelParameters,
     market: MarketParameters,
@@ -126,11 +106,27 @@ def get_vol(
 # =================== Black-Sholes greeks and tools ================
 # ==================================================================
 # @nb.njit()
+# def cdf(x: float) -> float:
+#     return (1.0 + math.erf(x / np.sqrt(2.0))) / 2.0
+
+
+@nb.njit()
 def cdf(x: float) -> float:
-    return (1.0 + math.erf(x / np.sqrt(2.0))) / 2.0
+    t = 1 / (1 + 0.2316419 * abs(x))
+    summ = (
+        0.319381530 * t
+        - 0.356563782 * t**2
+        + 1.781477937 * t**3
+        - 1.821255978 * t**4
+        + 1.330274429 * t**5
+    )
+    if x >= 0:
+        return 1 - summ * np.exp(-np.absolute(x) ** 2 / 2) / np.sqrt(2 * np.pi)
+    else:
+        return summ * np.exp(-np.absolute(x) ** 2 / 2) / np.sqrt(2 * np.pi)
 
 
-# @nb.njit()
+@nb.njit()
 def pdf(x: float) -> float:
     probability = 1.0 / np.sqrt(2 * np.pi)
     probability *= np.exp(-0.5 * x**2)
@@ -180,7 +176,7 @@ def get_implied_volatility(
     return vol
 
 
-# @nb.njit()
+@nb.njit()
 def get_delta_bsm(
     option_type: str,
     sigma: float,
@@ -193,7 +189,7 @@ def get_delta_bsm(
     return cdf(d1) if option_type else cdf(d1) - 1.0
 
 
-# @nb.njit()
+@nb.njit()
 def get_vega_bsm(
     sigma: float,
     K: float,
@@ -205,7 +201,7 @@ def get_vega_bsm(
     return F * np.sqrt(T) * pdf(d1)
 
 
-# @nb.njit()
+@nb.njit()
 def get_gamma_bsm(
     sigma: float,
     K: float,
@@ -235,7 +231,7 @@ def get_price_bsm(
         iv=np.array([np.float64(0.0)]),
         types=np.array([np.bool(option_type)]),
     )
-    sigma = get_vol(model, market)
+    sigma = get_vol(model, market)[0]
     d1 = get_d1(sigma, K, T, F, r)
     d2 = d1 - sigma * np.sqrt(T)
     p = 1 if option_type else -1
@@ -247,7 +243,7 @@ def get_vanna_bsm():
     pass
 
 
-# @nb.njit()
+@nb.njit()
 def get_d1(
     sigma: float,
     K: float,
@@ -281,11 +277,10 @@ def get_delta(
     delta_bsm = get_delta_bsm(option_type, sigma, K, T, F, r)
     vega_bsm = get_vega_bsm(sigma, K, T, F, r)
     market = MarketParameters(
-        F=F,
-        r=r,
-        T=T,
+        F=np.float64(F),
+        r=np.float64(r),
+        T=np.float64(T),
         K=np.array([np.float64(K)]),
-        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -317,7 +312,6 @@ def get_gamma(
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        # C=np.array([np.float64(C)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -358,7 +352,6 @@ def get_vega(
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -386,7 +379,6 @@ def get_rega(
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -411,7 +403,6 @@ def get_sega(
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -420,7 +411,7 @@ def get_sega(
     return vega_bsm * dsigma_dho
 
 
-# @nb.njit()
+@nb.njit()
 def get_dsigma_dK(
     model: ModelParameters,
     K: float,
@@ -491,7 +482,7 @@ def get_dsigma_dK(
 # ==================================================================
 
 
-# @nb.njit()
+@nb.njit()
 def get_d2_sigma_dalpha_df(
     model: ModelParameters,
     K: float,
@@ -593,7 +584,7 @@ def get_d2_sigma_dalpha_df(
     return d2_sigma_dalpha_df2
 
 
-# @nb.njit()
+@nb.njit()
 def get_d2_sigma_df2(
     model: ModelParameters,
     K: float,
@@ -791,42 +782,7 @@ def get_dsigma_df(
 # ==================================================================
 
 
-_tmp_values_jacobian_sabr = {
-    "f": nb.float64,
-    "Ks": nb.types.Array(nb.float64, 1, "A"),
-    "T": nb.float64,
-    "n": nb.int64,
-    "ddalpha": nb.types.Array(nb.float64, 1, "A"),
-    "ddbeta": nb.types.Array(nb.float64, 1, "A"),
-    "ddv": nb.types.Array(nb.float64, 1, "A"),
-    "ddrho": nb.types.Array(nb.float64, 1, "A"),
-    "alpha": nb.float64,
-    "sigma": nb.float64,
-    "beta": nb.float64,
-    "v": nb.float64,
-    "rho": nb.float64,
-    "K": nb.float64,
-    "x": nb.float64,
-    "I_H": nb.float64,
-    "dI_H_1_dalpha": nb.float64,
-    "dI_H_beta": nb.float64,
-    "dI_h_v": nb.float64,
-    "dI_H_rho": nb.float64,
-    "I_B": nb.float64,
-    "B_alpha": nb.float64,
-    "B_beta": nb.float64,
-    "B_v": nb.float64,
-    "B_rho": nb.float64,
-    "sqrt": nb.float64,
-    "sig_alpha": nb.float64,
-    "sig_beta": nb.float64,
-    "sig_v": nb.float64,
-    "sig_rho": nb.float64,
-}
-
-
-# @nb.njit(locals=_tmp_values_jacobian_sabr)
-# @nb.njit()
+@nb.njit()
 def jacobian_sabr(
     model: ModelParameters,
     market: MarketParameters,
