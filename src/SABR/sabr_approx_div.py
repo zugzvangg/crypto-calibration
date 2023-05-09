@@ -12,7 +12,6 @@ _spec_market_params = [
     ("r", nb.float64),
     ("T", nb.float64),
     ("K", nb.float64[:]),
-    ("C", nb.float64[:]),
     ("iv", nb.float64[:]),
     ("types", nb.boolean[:]),
 ]
@@ -31,7 +30,6 @@ class MarketParameters(object):
     r: nb.float64
     T: nb.float64
     K: nb.float64[:]
-    C: nb.float64[:]
     iv: nb.float64[:]
     types: nb.boolean[:]
 
@@ -41,7 +39,6 @@ class MarketParameters(object):
         r: nb.float64,
         T: nb.float64,
         K: nb.float64[:],
-        C: nb.float64[:],
         iv: nb.float64[:],
         types: nb.boolean[:],
     ):
@@ -49,7 +46,6 @@ class MarketParameters(object):
         self.r = r
         self.T = T
         self.K = K
-        self.C = C
         self.iv = iv
         self.types = types
 
@@ -70,7 +66,7 @@ class ModelParameters(object):
         self.rho = rho
 
 
-_tmp_values_vol_sabr = {
+_tmp_values_get_vol = {
     "f": nb.float64,
     "Ks": nb.types.Array(nb.float64, 1, "A"),
     "sigmas": nb.types.Array(nb.float64, 1, "A"),
@@ -89,15 +85,15 @@ _tmp_values_vol_sabr = {
 }
 
 
-# @nb.njit(locals=_tmp_values_vol_sabr)
+# @nb.njit(locals=_tmp_values_get_vol)
 # @nb.njit()
-def vol_sabr(
+def get_vol(
     model: ModelParameters,
     market: MarketParameters,
 ) -> np.array:
     F, Ks, T = market.F, market.K, market.T
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
-    assert beta<=1.0, "Beta should be from [0,1]"
+    assert beta <= 1.0, "Beta should be from [0,1]"
     n = len(Ks)
     sigmas = np.zeros(n, dtype=np.float64)
     for index in range(n):
@@ -221,13 +217,23 @@ def get_gamma_bsm(
 
 # @nb.njit()
 def get_price_bsm(
+    model: ModelParameters,
     option_type: str,
-    sigma: float,
     K: float,
     T: float,
     F: float,
     r: float = 0.0,
 ) -> float:
+    market = MarketParameters(
+        F=F,
+        r=r,
+        T=T,
+        K=np.array([np.float64(K)]),
+        # can lay zero, not needed to calculate volatility
+        iv=np.array([np.float64(0.0)]),
+        types=np.array([np.bool(option_type)]),
+    )
+    sigma = get_vol(model, market)
     d1 = get_d1(sigma, K, T, F, r)
     d2 = d1 - sigma * np.sqrt(T)
     p = 1 if option_type else -1
@@ -272,13 +278,12 @@ def get_delta(
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     delta_bsm = get_delta_bsm(option_type, sigma, K, T, F, r)
     vega_bsm = get_vega_bsm(sigma, K, T, F, r)
-    C = get_price_bsm(option_type, sigma, K, T, F, r)
     market = MarketParameters(
         F=F,
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        C=np.array([np.float64(C)]),
+        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -286,7 +291,9 @@ def get_delta(
 
     dsigma_dalpha = dsigma_dalphas[0]
     dsigma_df = get_dsigma_df(model=model, K=K, T=T, F=F)
-    return delta_bsm + vega_bsm * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
+    # return delta_bsm + vega_bsm * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
+    # no sticky delta variant
+    return delta_bsm + vega_bsm * dsigma_df
 
 
 # @nb.njit()
@@ -303,20 +310,19 @@ def get_gamma(
     d1 = get_d1(sigma, K, T, F, r)
     dsigma_df = get_dsigma_df(model, K, T, F)
     gamma_bsm = get_gamma_bsm(sigma, K, T, F, r)
-    C = get_price_bsm(option_type, sigma, K, T, F, r)
     market = MarketParameters(
         F=F,
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        C=np.array([np.float64(C)]),
+        # C=np.array([np.float64(C)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
     dsigma_dalphas, _, _, _ = jacobian_sabr(model=model, market=market)
     dsigma_dalpha = dsigma_dalphas[0]
-    d2_sigma_df2 = get_d2_sigma_df2(model, option_type, sigma, K, T, F, r)
-    d2_sigma_dalpha_df = get_d2_sigma_dalpha_df(model, option_type, sigma, K, T, F, r)
+    d2_sigma_df2 = get_d2_sigma_df2(model, K, T, F)
+    d2_sigma_dalpha_df = get_d2_sigma_dalpha_df(model, K, T, F)
     last_gamma_component_0 = (
         d2_sigma_df2
         + d2_sigma_dalpha_df * rho * v / F**beta
@@ -345,13 +351,12 @@ def get_vega(
 ):
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     vega_bsm = get_vega_bsm(sigma, K, T, F, r)
-    C = get_price_bsm(option_type, sigma, K, T, F, r)
     market = MarketParameters(
         F=F,
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        C=np.array([np.float64(C)]),
+        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -359,6 +364,8 @@ def get_vega(
     dsigma_dalpha = dsigma_dalphas[0]
     dsigma_df = get_dsigma_df(model, K, T, F)
     return vega_bsm * (dsigma_dalpha + dsigma_df * rho * F**beta / v)
+    # no sticky vega variant
+    # return  vega_bsm * dsigma_dalpha
 
 
 # @nb.njit()
@@ -372,13 +379,12 @@ def get_rega(
     r: float = 0.0,
 ):
     vega_bsm = get_vega_bsm(sigma, K, T, F, r)
-    C = get_price_bsm(option_type, sigma, K, T, F, r)
     market = MarketParameters(
         F=F,
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        C=np.array([np.float64(C)]),
+        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -398,13 +404,12 @@ def get_sega(
     r: float = 0.0,
 ):
     vega_bsm = get_vega_bsm(sigma, K, T, F, r)
-    C = get_price_bsm(option_type, sigma, K, T, F, r)
     market = MarketParameters(
         F=F,
         r=r,
         T=T,
         K=np.array([np.float64(K)]),
-        C=np.array([np.float64(C)]),
+        # C=np.array([np.float64(0.0)]),
         iv=np.array([np.float64(sigma)]),
         types=np.array([np.bool(option_type)]),
     )
@@ -419,7 +424,7 @@ def get_dsigma_dK(
     K: float,
     T: float,
     F: float,
-)->float:
+) -> float:
     x = np.log(F / K)
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     if x == 0.0:
@@ -487,12 +492,9 @@ def get_dsigma_dK(
 # @nb.njit()
 def get_d2_sigma_dalpha_df(
     model: ModelParameters,
-    option_type: bool,
-    sigma: float,
     K: float,
     T: float,
     F: float,
-    r: float = 0.0,
 ) -> float:
     x = np.log(F / K)
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
@@ -592,12 +594,9 @@ def get_d2_sigma_dalpha_df(
 # @nb.njit()
 def get_d2_sigma_df2(
     model: ModelParameters,
-    option_type: bool,
-    sigma: float,
     K: float,
     T: float,
     F: float,
-    r: float = 0.0,
 ):
     alpha, beta, v, rho = model.alpha, model.beta, model.v, model.rho
     x = np.log(F / K)
@@ -1152,14 +1151,14 @@ def calibrate_sabr(
     tick["iv"] = iv
     tick = tick[~tick["iv"].isin([None, np.nan])]
     karr = tick.strike_price.to_numpy(dtype=np.float64)
-    carr = tick.mark_price_usd.to_numpy(dtype=np.float64)
+    # carr = tick.mark_price_usd.to_numpy(dtype=np.float64)
     iv = tick.iv.to_numpy(dtype=np.float64)
     T = np.float64(tick.tau.mean())
     types = np.where(tick["type"] == "call", True, False)
     # take it zero as on deribit
     r_val = np.float64(0.0)
     S_val = np.float64(tick.underlying_price.iloc[0])
-    market = MarketParameters(K=karr, T=T, F=S_val, r=r_val, C=carr, types=types, iv=iv)
+    market = MarketParameters(K=karr, T=T, F=S_val, r=r_val, types=types, iv=iv)
 
     def clip_params(sabr_params: np.ndarray) -> np.ndarray:
         """
@@ -1226,7 +1225,7 @@ def calibrate_sabr(
             J_tmp = jacobian_sabr(model=model_parameters, market=market)
             J = np.concatenate([J_tmp[0:2], J_tmp[3:]])
 
-        iv = vol_sabr(model=model_parameters, market=market)
+        iv = get_vol(model=model_parameters, market=market)
         weights = np.ones_like(market.K)
         weights = weights / np.sum(weights)
         res = iv - market.iv
@@ -1255,7 +1254,7 @@ def calibrate_sabr(
         calibrated_params[2],
         calibrated_params[3],
     )
-    final_vols = vol_sabr(model=final_params, market=market)
+    final_vols = get_vol(model=final_params, market=market)
 
     # tick["delta"] = deltas
     # tick["vega"] = vegas
