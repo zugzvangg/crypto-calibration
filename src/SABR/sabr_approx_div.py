@@ -340,9 +340,7 @@ def get_gamma(
     # not sticky
     return (
         gamma_bsm
-        + (pdf(d1) - F * d1 * gamma_bsm) 
-        * np.sqrt(T)
-        * dsigma_df
+        + (pdf(d1) - F * d1 * gamma_bsm) * np.sqrt(T) * dsigma_df
         + last_gamma_component_not_sticky
     )
 
@@ -697,11 +695,8 @@ def get_d2_sigma_df2(
             )
             dI_B_0_dF = (
                 v
-                * (
-                    alpha * F * (-rho + z + sqrt) * sqrt * epsilon
-                    + F ** (2 - beta) * v * x * (rho - z - sqrt)
-                )
-                / (alpha * F**2 * (-rho + z + sqrt) * sqrt * epsilon**2)
+                * (sqrt * alpha * F**beta * epsilon - F * v * x)
+                / (sqrt * alpha * F * F**beta * epsilon**2)
             )
         I_B_0 = v * x / (epsilon)
 
@@ -716,12 +711,31 @@ def get_d2_sigma_df2(
     ) + alpha * beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) * (beta / 2 - 1 / 2) / (
         4 * F
     )
-    d2I_H_1_d2f = alpha**2 * (beta - 2) * (K * F) ** (beta - 1) * (beta - 1) ** 3 / (
-        24 * F**2
-    ) + alpha * beta * rho * v * (K * F) ** (beta / 2 - 1 / 2) * (beta / 2 - 1 / 2) * (
-        beta / 2 - 3 / 2
-    ) / (
-        8 * F**2
+    d2I_H_1_d2f = (
+        alpha**2
+        * (K * F) ** (beta - 1)
+        * (1 - beta) ** 2
+        * (beta - 1) ** 2
+        / (24 * F**2)
+        - alpha**2
+        * (K * F) ** (beta - 1)
+        * (1 - beta) ** 2
+        * (beta - 1)
+        / (24 * F**2)
+        + alpha
+        * beta
+        * rho
+        * v
+        * (K * F) ** (beta / 2 + -1 / 2)
+        * (beta / 2 - 1 / 2) ** 2
+        / (4 * F**2)
+        - alpha
+        * beta
+        * rho
+        * v
+        * (K * F) ** (beta / 2 - 1 / 2)
+        * (beta / 2 - 1 / 2)
+        / (4 * F**2)
     )
     d2_sigma_df2 = d2I_B_0_d2f + T * (
         d2I_B_0_d2f * I_H_1 + d2I_H_1_d2f * I_B_0 + 2 * dI_B_0_dF * dI_H_1_dF
