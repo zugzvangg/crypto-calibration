@@ -324,14 +324,26 @@ def get_gamma(
         + d2_sigma_dalpha_df * rho * v / F**beta
         - dsigma_dalpha * beta * rho * v / F ** (beta + 1)
     )
+    last_gamma_component_0_not_sticky = d2_sigma_df2
     last_gamma_component = last_gamma_component_0 * F * pdf(d1) * np.sqrt(T)
-
+    last_gamma_component_not_sticky = (
+        last_gamma_component_0_not_sticky * F * pdf(d1) * np.sqrt(T)
+    )
+    # sticky
+    # return (
+    #     gamma_bsm
+    #     + (pdf(d1) - F * d1 * gamma_bsm)
+    #     * np.sqrt(T)
+    #     * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
+    #     + last_gamma_component
+    # )
+    # not sticky
     return (
         gamma_bsm
-        + (pdf(d1) - 2 * F * d1 * gamma_bsm)
+        + (pdf(d1) - F * d1 * gamma_bsm) 
         * np.sqrt(T)
-        * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
-        + last_gamma_component
+        * dsigma_df
+        + last_gamma_component_not_sticky
     )
 
 
