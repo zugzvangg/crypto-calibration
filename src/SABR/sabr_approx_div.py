@@ -288,8 +288,8 @@ def get_delta(
 
     dsigma_dalpha = dsigma_dalphas[0]
     dsigma_df = get_dsigma_df(model=model, K=K, T=T, F=F)
-    # return delta_bsm + vega_bsm * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
-    # no sticky delta variant
+    return delta_bsm + vega_bsm * (dsigma_df + dsigma_dalpha * rho * v / F**beta)
+    # no sticky delta variant, whick passes finite diffs sanity check
     return delta_bsm + vega_bsm * dsigma_df
 
 
