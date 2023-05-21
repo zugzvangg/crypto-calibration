@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 import pandas as pd
-from src.utils import get_tick
+from src.utils import get_tick, get_bid_ask
 from typing import Final, Tuple
 from src.levenberg_marquardt import LevenbergMarquardt
 import math
@@ -1478,4 +1478,6 @@ def calibrate_sabr(
     ]
     result["iv"] = 100 * result["iv"]
     result["calibrated_iv"] = 100 * result["calibrated_iv"]
+    result["ask_iv"] = result["iv"] * (result["strike_price"].apply(get_bid_ask))
+    result["bid_iv"] = result["iv"] * (2 - result["strike_price"].apply(get_bid_ask))
     return calibrated_params, error, result
