@@ -1603,5 +1603,10 @@ def calibrate_heston(
             "bid_iv",
         ]
     ].copy()
-
-    return calibrated_params, error, result
+    result = result[(~result["market_iv"].isna()) & (~result["calibrated_iv"].isna())]
+    weights = np.ones(len(result))
+    weights = weights / np.sum(weights)
+    error_df = np.array(result["market_iv"]/100 - result["calibrated_iv"]/100)
+    error_df = error_df*weights
+    error_iv = np.linalg.norm(error_df)
+    return calibrated_params, error_iv, result
