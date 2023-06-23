@@ -561,32 +561,7 @@ def jacobian_wishart(market: MarketParameters, model: ModelParameters):
         )
         + (E11 + E22) ** 4
     ) / (E11 + E22) ** 4
-    # dEd = (
-    #     mf
-    #     * (
-    #         mf
-    #         * (
-    #             (E11 + E22)
-    #             * (
-    #                 Q11 * Q12
-    #                 + Q21 * Q22
-    #                 + 2 * (Q11 * R11 + Q21 * R12) * (Q11 * R21 + Q21 * R22)
-    #                 + (Q12 * R21 + Q22 * R22)
-    #                 * (Q11 * R21 + Q12 * R11 + Q21 * R22 + Q22 * R12)
-    #             )
-    #             - 7.5
-    #             * (Q11 * R21 + Q21 * R22)
-    #             * (
-    #                 E11 * (Q11 * R11 + Q21 * R12)
-    #                 + Ed * (Q11 * R21 + Q21 * R22)
-    #                 + Ed * (Q12 * R11 + Q22 * R12)
-    #                 + E22 * (Q12 * R21 + Q22 * R22)
-    #             )
-    #         )
-    #         + 3 * (E11 + E22) ** 2 * (Q11 * R21 + Q21 * R22)
-    #     )
-    #     / (3 * (E11 + E22) ** 3)
-    # )
+
     dEd = (
         mf
         * (
@@ -1012,4 +987,6 @@ def calibrate_wasc(
     ]
     result["iv"] = 100 * result["iv"]
     result["calibrated_iv"] = 100 * result["calibrated_iv"]
+    result["ask_iv"] = result["iv"] * (result["strike_price"].apply(get_bid_ask))
+    result["bid_iv"] = result["iv"] * (2 - result["strike_price"].apply(get_bid_ask))
     return calibrated_params, error, result
