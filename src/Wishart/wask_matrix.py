@@ -1,7 +1,7 @@
 import numba as nb
 import numpy as np
 
-RAIF{}
+FLAG = 123
 
 
 @nb.experimental.jitclass([("R", nb.float64[:, ::1])])
