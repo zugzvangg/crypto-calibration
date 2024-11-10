@@ -1,8 +1,6 @@
 import numba as nb
 import numpy as np
 
-FLAG = 123
-
 
 @nb.experimental.jitclass([("R", nb.float64[:, ::1])])
 class R:
